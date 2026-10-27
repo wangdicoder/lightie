@@ -1,0 +1,112 @@
+{
+  "name": "lightie",
+  "version": "0.0.0",
+  "description": "Ahead-of-time compiled Lottie: plays After Effects animations as native browser animations (WAAPI), with zero per-frame JavaScript.",
+  "license": "MIT",
+  "author": "Di Wang",
+  "type": "module",
+  "sideEffects": [
+    "./dist/element.js",
+    "./dist/react.js",
+    "./dist/chunk-*.js",
+    "./src/element/index.ts",
+    "./src/react/index.ts"
+  ],
+  "keywords": [
+    "lottie",
+    "bodymovin",
+    "animation",
+    "waapi",
+    "web-animations",
+    "after-effects",
+    "web-component",
+    "react"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./compiler": {
+      "types": "./dist/compiler.d.ts",
+      "import": "./dist/compiler.js"
+    },
+    "./element": {
+      "types": "./dist/element.d.ts",
+      "import": "./dist/element.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./fallback/lottie-web": {
+      "types": "./dist/fallback-lottie-web.d.ts",
+      "import": "./dist/fallback-lottie-web.js"
+    },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "import": "./dist/vite.js"
+    },
+    "./vite-client": {
+      "types": "./vite-client.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "lightie": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "vite-client.d.ts"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup",
+    "dev": "vite --config playground/vite.config.ts",
+    "fixtures": "node fixtures/build.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "bench": "node bench/run.ts",
+    "size": "node scripts/size.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size"
+  },
+  "peerDependencies": {
+    "lottie-web": "^5.10.0",
+    "react": ">=18",
+    "vite": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "lottie-web": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.1",
+    "@types/node": "22.20.5",
+    "@types/pngjs": "6.0.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
+    "lottie-web": "^5.13.0",
+    "pixelmatch": "8.0.0",
+    "pngjs": "7.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vitest": "5.0.5"
+  }
+}

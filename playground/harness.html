@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>lightie fidelity harness</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #fff;
+      }
+      main {
+        display: flex;
+        gap: 16px;
+        padding: 16px;
+        align-items: flex-start;
+      }
+      .frame {
+        background: #fff;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="ref" class="frame"></div>
+      <div id="out" class="frame"></div>
+    </main>
+    <script type="module" src="./harness.ts"></script>
+  </body>
+</html>

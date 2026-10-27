@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>lightie bench</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #fff;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, 120px);
+        gap: 4px;
+        padding: 4px;
+      }
+      #grid > div {
+        width: 120px;
+        height: 120px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+    <script type="module" src="./bench.ts"></script>
+  </body>
+</html>

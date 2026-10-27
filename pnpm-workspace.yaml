@@ -1,0 +1,4 @@
+allowBuilds:
+  esbuild: true
+# Refuse dependency versions published less than 7 days ago (value in minutes).
+minimumReleaseAge: 10080
