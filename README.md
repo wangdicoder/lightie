@@ -44,6 +44,8 @@ Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
 | time-remap | lottie-web | 14 ms | 47 ms | 30 | 0 |
 | time-remap | lightie | 0 ms | 1 ms | 29 | 31 |
 
+Real-world coverage: `node scripts/corpus.ts <dir>` compiles every Lottie file in a directory and ranks what still needs the fallback. On the 189 sample animations in the lottie-ios repository, 105 (55.6%) compile without fallback and none fail to compile. The most common blockers are text layers (23 files), track mattes that are not solid shapes (20), animated masks (16), layer effects (13) and animated gradients (11). In the Chromium pixel comparison, 75 of the 101 natively supported files without external images match lottie-web. Five of the 26 mismatches are files that lottie-web itself cannot render (null easing handles, `rx` without `ry`, a one-component anchor).
+
 Other browsers: `pnpm bench:video` records each browser while the main thread is blocked for 2 s. In Firefox, lottie-web stops changing for 1.85 s while lightie keeps moving, both for composited tracks and for worker-drawn canvases. Playwright's WebKit recording stalls with the main thread, so Safari was checked by hand in the playground instead: lightie keeps moving during the block.
 
 Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). The worst frame differs in 0.19% of its pixels, which is anti-aliasing. Shapes drawn on a canvas (stroke width, trim paths, morphing) are allowed 0.8%, because canvas and SVG anti-alias thin strokes slightly differently; the worst measured frame is 0.66% (Firefox, a 2 px ring).

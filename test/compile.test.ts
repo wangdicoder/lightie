@@ -172,6 +172,55 @@ describe('compile', () => {
     },
   );
 
+  const minimal = (v: string, ks: Record<string, unknown>, color = [1, 0, 0, 1]) => ({
+    v,
+    fr: 30,
+    ip: 0,
+    op: 30,
+    w: 100,
+    h: 100,
+    layers: [
+      {
+        ty: 4,
+        ind: 1,
+        ip: 0,
+        op: 30,
+        st: 0,
+        ks: {
+          o: { a: 0, k: 100 },
+          a: { a: 0, k: [0, 0, 0] },
+          p: { a: 0, k: [50, 50, 0] },
+          s: { a: 0, k: [100, 100, 100] },
+          ...ks,
+        },
+        shapes: [
+          { ty: 'rc', d: 1, p: { a: 0, k: [0, 0] }, s: { a: 0, k: [20, 20] }, r: { a: 0, k: 0 } },
+          { ty: 'fl', c: { a: 0, k: color }, o: { a: 0, k: 100 } },
+        ],
+      },
+    ],
+  });
+
+  it('migrates 0-255 colours from Bodymovin files older than 4.1.9, like lottie-web', () => {
+    const fill = (v: string, color: number[]) => {
+      const node = compile(minimal(v, { r: { a: 0, k: 0 } }, color)).animation.nodes[0] as SvgNode;
+      return (node.c[0] as SvgPath).fill;
+    };
+    expect(fill('4.0.0', [255, 0, 0, 255])).toBe('#ff0000');
+    expect(fill('5.7.0', [1, 0, 0, 1])).toBe('#ff0000');
+  });
+
+  it('flattens rx/ry rotation into 2D like lottie-web and ignores rz without rx', () => {
+    const tilted = compile(
+      minimal('5.7.0', { rx: { a: 0, k: 60 }, ry: { a: 0, k: 0 }, rz: { a: 0, k: 0 }, or: { a: 0, k: [0, 0, 0] } }),
+    );
+    const m = (tilted.animation.nodes[0] as SvgNode).m!;
+    for (const [i, v] of [1, 0, 0, 0.5, 50, 50].entries()) expect(m[i]).toBeCloseTo(v, 5);
+    const rzOnly = compile(minimal('5.7.0', { rz: { a: 0, k: 45 } })).animation.nodes[0] as SvgNode;
+    expect(rzOnly.r).toBeUndefined();
+    expect(rzOnly.m).toBeUndefined();
+  });
+
   it('moves stroke width animations to a canvas painted off the main thread', () => {
     const { animation, report } = compile(fixture('stroke-width'));
     expect(report.tracks).toEqual({ composited: 0, paint: 1, baked: 0 });

@@ -1,6 +1,7 @@
 import type { LightieAnimation } from '../types';
 import { compileComp } from './layers';
 import { isLottieAnimationData, type LottieAnimationData } from './lottie';
+import { migrate } from './migrate';
 import type { TrackStats } from './track';
 
 export interface CompileOptions {
@@ -27,7 +28,7 @@ export interface CompileResult {
 export function compile(input: unknown, options: CompileOptions = {}): CompileResult {
   const data = typeof input === 'string' ? (JSON.parse(input) as unknown) : input;
   if (!isLottieAnimationData(data)) throw new TypeError('lightie: input is not a Lottie animation');
-  const lottie = data as LottieAnimationData;
+  const lottie = migrate(data as LottieAnimationData);
   if (!(lottie.op > lottie.ip) || !(lottie.fr > 0)) throw new TypeError('lightie: animation has no duration');
 
   const found = new Map<string, Set<string>>();

@@ -1,5 +1,5 @@
 import type { Matrix, NodeBase, Track } from '../types';
-import { composeTransform, isIdentity } from './geometry';
+import { composeTransform, isIdentity, multiply, translation } from './geometry';
 import type { LottieProperty, LottieSeparatedPosition, LottieTransform } from './lottie';
 import { evaluate, hasExpression, type NormProp, normalize } from './property';
 import {
@@ -38,6 +38,42 @@ interface Props {
   skew: NormProp;
   skewAxis: NormProp;
   opacity: NormProp;
+  tilt?: { rx: NormProp; ry: NormProp; rz: NormProp; or: NormProp };
+}
+
+type Rows = number[][];
+
+const rowProduct = (a: Rows, b: Rows): Rows =>
+  a.map((row) => [0, 1, 2].map((j) => row.reduce((s, v, k) => s + v * b[k]![j]!, 0)));
+
+function tiltMatrix(rx: number, ry: number, rz: number, or: number[]): Matrix {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const z = (deg: number): Rows => {
+    const [c, s] = [Math.cos(rad(deg)), Math.sin(rad(deg))];
+    return [
+      [c, -s, 0],
+      [s, c, 0],
+      [0, 0, 1],
+    ];
+  };
+  const y = (deg: number): Rows => {
+    const [c, s] = [Math.cos(rad(deg)), Math.sin(rad(deg))];
+    return [
+      [c, 0, s],
+      [0, 1, 0],
+      [-s, 0, c],
+    ];
+  };
+  const x = (deg: number): Rows => {
+    const [c, s] = [Math.cos(rad(deg)), Math.sin(rad(deg))];
+    return [
+      [1, 0, 0],
+      [0, c, -s],
+      [0, s, c],
+    ];
+  };
+  const r = [z(-rz), y(ry), x(rx), z(-(or[2] ?? 0)), y(or[1] ?? 0), x(or[0] ?? 0)].reduce(rowProduct);
+  return [r[0]![0]!, r[0]![1]!, r[1]![0]!, r[1]![1]!, 0, 0];
 }
 
 function readProps(ks: LottieTransform, issues: Issues): Props {
@@ -50,7 +86,7 @@ function readProps(ks: LottieTransform, issues: Issues): Props {
     anchor: read(ks.a, [0, 0, 0]),
     position: { kind: 'static', v: [0, 0, 0] },
     scale: read(ks.s, [100, 100, 100]),
-    rotation: read(ks.r ?? ks.rz, [0]),
+    rotation: ks.rx ? { kind: 'static', v: [0] } : read(ks.r, [0]),
     skew: read(ks.sk, [0]),
     skewAxis: read(ks.sa, [0]),
     opacity: read(ks.o, [100]),
@@ -60,6 +96,14 @@ function readProps(ks: LottieTransform, issues: Issues): Props {
     out.positionY = read(ks.p.y, [0]);
   } else {
     out.position = read(ks.p, [0, 0, 0]);
+  }
+  if (ks.rx) {
+    out.tilt = { rx: read(ks.rx, [0]), ry: read(ks.ry, [0]), rz: read(ks.rz, [0]), or: read(ks.or, [0, 0, 0]) };
+    const { rx, ry, or } = out.tilt;
+    if ([rx, ry, or].every((p) => p.kind === 'static' && p.v.every((v) => v === 0))) {
+      out.rotation = out.tilt.rz;
+      delete out.tilt;
+    }
   }
   if (props.some(hasExpression)) issues.add('expression');
   return out;
@@ -76,14 +120,20 @@ function positionAt(props: Props, t: number): number[] {
 }
 
 function matrixAt(props: Props, t: number): Matrix {
-  return composeTransform({
+  const position = positionAt(props, t);
+  const flat = composeTransform({
     anchor: evaluate(props.anchor, t),
-    position: positionAt(props, t),
+    position,
     scale: evaluate(props.scale, t),
-    rotation: evaluate(props.rotation, t)[0] ?? 0,
+    rotation: props.tilt ? 0 : (evaluate(props.rotation, t)[0] ?? 0),
     skew: evaluate(props.skew, t)[0] ?? 0,
     skewAxis: evaluate(props.skewAxis, t)[0] ?? 0,
   });
+  if (!props.tilt) return flat;
+  const { rx, ry, rz, or } = props.tilt;
+  const tilt = tiltMatrix(evaluate(rx, t)[0] ?? 0, evaluate(ry, t)[0] ?? 0, evaluate(rz, t)[0] ?? 0, evaluate(or, t));
+  const [px, py] = [position[0] ?? 0, position[1] ?? 0];
+  return multiply(translation(px, py), multiply(tilt, multiply(translation(-px, -py), flat)));
 }
 
 export function transformMatrixAt(ks: LottieTransform, t: number, issues: Issues): Matrix {
@@ -92,7 +142,10 @@ export function transformMatrixAt(ks: LottieTransform, t: number, issues: Issues
 
 export function isTransformStatic(ks: LottieTransform, issues: Issues): boolean {
   const p = readProps(ks, issues);
-  return [p.anchor, p.position, p.positionX, p.positionY, p.scale, p.rotation, p.skew, p.skewAxis].every(isStatic);
+  const tilt = p.tilt ? [p.tilt.rx, p.tilt.ry, p.tilt.rz, p.tilt.or] : [];
+  return [p.anchor, p.position, p.positionX, p.positionY, p.scale, p.rotation, p.skew, p.skewAxis, ...tilt].every(
+    isStatic,
+  );
 }
 
 function mergeSeparated(x: NormProp, y: NormProp): NormProp | null {
@@ -149,9 +202,10 @@ export function compileTransform(
   const node: NodeBase = {};
   const tracks: Track[] = [];
   const skewed = !(isStatic(props.skew) && (staticValue(props.skew)[0] ?? 0) === 0);
-  const motion = [props.anchor, props.position, props.positionX, props.positionY, props.scale, props.rotation];
+  const tilt = props.tilt ? [props.tilt.rx, props.tilt.ry, props.tilt.rz, props.tilt.or] : [];
+  const motion = [props.anchor, props.position, props.positionX, props.positionY, props.scale, props.rotation, ...tilt];
 
-  if (skewed) {
+  if (skewed || props.tilt) {
     if (motion.every(isStatic) && isStatic(props.skewAxis) && isStatic(props.skew)) {
       const m = matrixAt(props, 0);
       if (!isIdentity(m)) node.m = m.map((v) => round(v, 6)) as Matrix;
