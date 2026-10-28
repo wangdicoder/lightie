@@ -7,7 +7,7 @@
     "type": "git",
     "url": "git+https://github.com/wangdicoder/lightie.git"
   },
-  "homepage": "https://github.com/wangdicoder/lightie#readme",
+  "homepage": "https://wangdicoder.github.io/lightie/",
   "bugs": {
     "url": "https://github.com/wangdicoder/lightie/issues"
   },
@@ -83,7 +83,9 @@
     "size": "node scripts/size.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size",
     "bench:video": "node bench/video.ts",
-    "prepublishOnly": "pnpm check"
+    "prepublishOnly": "pnpm check",
+    "dev:site": "vite --config site/vite.config.ts",
+    "build:site": "vite build --config site/vite.config.ts"
   },
   "peerDependencies": {
     "lottie-web": "^5.10.0",

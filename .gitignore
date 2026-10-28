@@ -8,3 +8,4 @@ bench/results/
 *.log
 .DS_Store
 .vite/
+site-dist/

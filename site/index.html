@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>lightie: Lottie compiled to native browser animations</title>
+    <meta
+      name="description"
+      content="lightie compiles Lottie JSON into DOM nodes and Web Animations API keyframes. A 3.2 kB runtime, zero JavaScript per frame, and animations that keep moving when the main thread is busy."
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <a class="brand" href="#top">lightie</a>
+      <nav>
+        <a href="#demo">Demo</a>
+        <a href="#how">How it works</a>
+        <a href="#numbers">Numbers</a>
+        <a href="#start">Get started</a>
+        <a href="https://github.com/wangdicoder/lightie">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-copy">
+          <h1>Lottie, compiled to native browser animations.</h1>
+          <p class="lead">
+            lightie turns Lottie JSON into DOM nodes and Web Animations API keyframes ahead of time. The browser plays them
+            on the compositor, so your animations keep moving while the main thread is busy, with a 3.2 kB runtime instead
+            of a 76 kB one.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#demo">See it under load</a>
+            <a class="button" href="https://github.com/wangdicoder/lightie">View on GitHub</a>
+          </div>
+          <code class="install">npm install lightie</code>
+        </div>
+        <div class="hero-art" id="hero"></div>
+      </section>
+
+      <section class="stats">
+        <div><strong>3.2 kB</strong><span>player, minified and gzipped (lottie-web: 46.5–76.1 kB)</span></div>
+        <div><strong>0 ms</strong><span>of JavaScript per frame for transforms, opacity and colour</span></div>
+        <div><strong>30 / 30</strong><span>frames drawn during a 500 ms main-thread block (lottie-web: 0–1)</span></div>
+        <div><strong>96 / 96</strong><span>real-world sample files that lottie-web renders correctly also match pixel for pixel</span></div>
+      </section>
+
+      <section id="demo" class="demo">
+        <h2>Same animation, two renderers</h2>
+        <p>
+          Press <em>Block the main thread</em>. The page runs a 2 second busy loop: the moving dot is driven by
+          <code>requestAnimationFrame</code> and freezes, lottie-web freezes with it, and lightie keeps going. Drop your own
+          Lottie file anywhere on this section to try it.
+        </p>
+        <div class="controls">
+          <label>Animation <select id="fixture"></select></label>
+          <label class="file">Open a Lottie file…<input id="file" type="file" accept=".json,application/json" /></label>
+          <button id="toggle" type="button">Pause</button>
+          <button id="block" type="button" class="primary">Block the main thread for 2 s</button>
+        </div>
+        <div class="heartbeat"><span>main thread</span><div class="track"><i id="beat"></i></div></div>
+        <div class="panes">
+          <figure>
+            <div id="ref" class="view"></div>
+            <figcaption>lottie-web 5.13 (SVG renderer)</figcaption>
+          </figure>
+          <figure>
+            <div id="out" class="view"></div>
+            <figcaption>lightie</figcaption>
+          </figure>
+        </div>
+        <pre id="report" class="report"></pre>
+      </section>
+
+      <section id="how" class="how">
+        <h2>How it works</h2>
+        <div class="cards">
+          <article>
+            <h3>Compile</h3>
+            <p>
+              At build time the compiler flattens precomp time, turns every keyframe segment into an exact
+              <code>cubic-bezier()</code>, and writes a compact scene. It also reports anything it cannot reproduce.
+            </p>
+          </article>
+          <article>
+            <h3>Composite</h3>
+            <p>
+              The player builds the DOM once and calls <code>element.animate()</code>. Transforms and opacity run on the
+              compositor thread; colour changes become cross-fades of opaque copies, so they do too.
+            </p>
+          </article>
+          <article>
+            <h3>Worker canvas</h3>
+            <p>
+              Geometry that changes over time (stroke width, trim paths, shape morphing) is drawn by one shared worker
+              through OffscreenCanvas, from the same keyframes and the same clock.
+            </p>
+          </article>
+          <article>
+            <h3>Fallback</h3>
+            <p>
+              Expressions, text layers and effects are reported by the compiler. With a fallback configured, lottie-web is
+              loaded only for those files; everything else never downloads it.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="numbers" class="numbers">
+        <h2>Numbers</h2>
+        <div class="tables">
+          <table>
+            <caption>Bundle cost (minified + gzip)</caption>
+            <tbody>
+              <tr><td><code>lightie</code> (player)</td><td>3.2 kB</td></tr>
+              <tr><td><code>lightie/element</code></td><td>4.3 kB</td></tr>
+              <tr><td><code>lightie/react</code></td><td>4.6 kB</td></tr>
+              <tr><td>paint worker (on demand)</td><td>3.7 kB</td></tr>
+              <tr><td>lottie-web light / full</td><td>46.5 / 76.1 kB</td></tr>
+            </tbody>
+          </table>
+          <table>
+            <caption>24 instances, headless Chromium</caption>
+            <thead>
+              <tr><th></th><th>JS / s</th><th>main thread / s</th><th>frames while blocked</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>lottie-web</td><td>21–57 ms</td><td>46–143 ms</td><td>0–1 of 30</td></tr>
+              <tr><td>lightie</td><td>0 ms</td><td>0–8 ms</td><td>30 of 30</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Fidelity is checked by rendering every test animation with lottie-web and with lightie in Chromium, WebKit and
+          Firefox and comparing pixels. Against the 189 sample animations in the lottie-ios repository, 56% compile without
+          any fallback, and every one of them that lottie-web itself renders correctly matches.
+        </p>
+      </section>
+
+      <section id="start" class="start">
+        <h2>Get started</h2>
+        <div class="snippets">
+          <div>
+            <h3>Compile at build time with Vite</h3>
+            <pre><code>// vite.config.ts
+import lightie from 'lightie/vite';
+export default { plugins: [lightie()] };
+
+// app.tsx
+import { Lightie } from 'lightie/react';
+import loader from './loader.json?lightie';
+
+&lt;Lightie animation={loader} autoplay loop /&gt;</code></pre>
+          </div>
+          <div>
+            <h3>Or use the CLI and the Web Component</h3>
+            <pre><code>npx lightie compile loader.json -o loader.lightie.json
+npx lightie check animations/*.json
+
+&lt;script type="module"&gt;
+  import 'lightie/element';
+&lt;/script&gt;
+&lt;lightie-player src="/loader.lightie.json" autoplay loop&gt;
+&lt;/lightie-player&gt;</code></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>MIT licensed. Made by Di Wang.</span>
+      <a href="https://github.com/wangdicoder/lightie">github.com/wangdicoder/lightie</a>
+    </footer>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

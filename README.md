@@ -1,6 +1,6 @@
 # lightie
 
-Lottie animations, compiled ahead of time into native browser animations.
+Lottie animations, compiled ahead of time into native browser animations. **[Live demo](https://wangdicoder.github.io/lightie/)**
 
 lightie turns a Lottie (Bodymovin) JSON file into DOM nodes plus [Web Animations API](https://developer.mozilla.org/docs/Web/API/Web_Animations_API) keyframes. The browser then plays the animation itself. Transforms and opacity run on the compositor thread, so the animation keeps moving while the main thread is busy rendering React, parsing JSON or running a long task. No JavaScript runs per frame.
 
