@@ -107,7 +107,8 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
 
   const id = `lightie${++instances}`;
   let gradients = 0;
-  const animations: Animation[] = [];
+  const specs: { el: Element; frames: Keyframe[] }[] = [];
+  let animations: Animation[] = [];
   const timing: KeyframeEffectOptions = { duration, iterations, fill: 'both' };
 
   const position = (el: HTMLElement | SVGElement) => {
@@ -125,9 +126,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
         [track.p]: css(track.p, value),
         easing: easing(e),
       }));
-      const a = el.animate(frames, timing);
-      a.pause();
-      animations.push(a);
+      specs.push({ el, frames });
     }
   };
 
@@ -264,14 +263,25 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
     iterations,
   });
 
+  const live = (): Animation[] => {
+    if (!animations.length) animations = specs.map(({ el, frames }) => el.animate(frames, timing));
+    return animations;
+  };
+
   const hold = (time: number) => {
     clearTimeout(timer);
     held = time;
-    for (const a of animations) {
+    const list = live();
+    for (const a of list) {
       a.pause();
       a.playbackRate = rate();
       a.currentTime = time;
     }
+    try {
+      for (const a of list) a.commitStyles();
+      for (const a of list) a.cancel();
+      animations = [];
+    } catch {}
     playing = false;
     painter?.sync(clock());
   };
@@ -279,7 +289,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
   const run = (time: number) => {
     const r = rate();
     origin = now() - time / r;
-    for (const a of animations) {
+    for (const a of live()) {
       a.playbackRate = r;
       a.startTime = origin;
     }
