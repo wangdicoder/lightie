@@ -1,7 +1,7 @@
-import type { DivNode, Matrix, SceneNode, SvgItem } from '../types';
+import type { DivNode, Keyframe, Matrix, SceneNode, SvgItem, Track } from '../types';
 import { fromLottiePath, IDENTITY, invert, isIdentity, multiply, pathToD, transformD } from './geometry';
 import type { LottieAsset, LottieLayer, LottieMask, LottiePathValue } from './lottie';
-import { hasExpression, hasKeyframes, normalize } from './property';
+import { evaluate, hasExpression, hasKeyframes, normalize } from './property';
 import { blendMode, compileShapes } from './shapes';
 import { fromRoot, type K, offsetOf, round, sample, type TimeMap, type TrackContext, toRoot, toTrack } from './track';
 import { compileTransform, type Issues, isTransformStatic, transformMatrixAt } from './transform';
@@ -165,14 +165,69 @@ function matted(
   const at = (t: number): Matrix =>
     chain.reduce<Matrix>((m, layer) => multiply(m, transformMatrixAt(layer.ks, t, issues)), IDENTITY);
   const exact = (m: Matrix) => m.map((v) => round(v, 6)) as Matrix;
+  const mask = inverted ? `M-100000 -100000H100000V100000H-100000Z${clip}` : clip;
   const inner: DivNode = { k: 'div', c: [node] };
-  const outer: DivNode = {
-    k: 'div',
-    c: [inner],
-    mask: inverted ? `M-100000 -100000H100000V100000H-100000Z${clip}` : clip,
-  };
+  const outer: DivNode = { k: 'div', c: [inner], mask };
   if (inverted) outer.maskRule = 'evenodd';
-  if (chain.every((layer) => isTransformStatic(layer.ks, issues))) {
+  const wrappers = chain.map(
+    (layer): DivNode => ({ k: 'div', c: [], ...compileTransform(layer.ks, comp, ctx, issues, { opacity: false }) }),
+  );
+  const animated = !chain.every((layer) => isTransformStatic(layer.ks, issues));
+  if (animated && !wrappers.some((w) => w.a?.some((track) => track.p === 'transform'))) {
+    const negate = (track: Track): Track => ({
+      p: track.p,
+      k: track.k.map(([o, v, e]): Keyframe => {
+        const value = Array.isArray(v) ? v.map((n) => -n) : -v;
+        return e === undefined ? [o, value] : [o, value, e];
+      }),
+    });
+    const inverse = (w: DivNode, layer: LottieLayer): DivNode[] => {
+      const out: DivNode[] = [];
+      if (w.m) out.push({ k: 'div', c: [], m: exact(invert(w.m)) });
+      const scale = w.a?.find((track) => track.p === 'scale');
+      if (scale) {
+        const norm = normalize(layer.ks.s, [100, 100, 100]);
+        const reciprocal = (frame: number) =>
+          evaluate(norm, fromRoot(comp, frame))
+            .slice(0, 2)
+            .map((v) => (Math.abs(v) < 1e-4 ? 1e4 : 100 / v));
+        const { win } = ctx;
+        const keys: K[] = [
+          ...sample(reciprocal, win.ip, win.op, ctx),
+          { o: offsetOf(win, win.op), v: reciprocal(win.op), e: 'linear' },
+        ];
+        out.push({ k: 'div', c: [], a: [toTrack('scale', keys, (v) => v, ctx)] });
+        ctx.stats.baked++;
+      } else if (w.s) out.push({ k: 'div', c: [], s: w.s.map((v) => round(1 / v, 6)) as [number, number] });
+      const rotate = w.a?.find((track) => track.p === 'rotate');
+      if (rotate) out.push({ k: 'div', c: [], a: [negate(rotate)] });
+      else if (w.r) out.push({ k: 'div', c: [], r: -w.r });
+      const translate = w.a?.find((track) => track.p === 'translate');
+      if (translate) out.push({ k: 'div', c: [], a: [negate(translate)] });
+      else if (w.t) out.push({ k: 'div', c: [], t: [-w.t[0], -w.t[1]] });
+      ctx.stats.composited += (rotate ? 1 : 0) + (translate ? 1 : 0);
+      return out;
+    };
+    const masked = wrappers[wrappers.length - 1]!;
+    masked.mask = mask;
+    if (inverted) masked.maskRule = 'evenodd';
+    const nest = [
+      ...wrappers,
+      ...chain
+        .map((layer, i) => inverse(wrappers[i]!, layer))
+        .reverse()
+        .flat(),
+    ];
+    let current: SceneNode = node;
+    for (let i = nest.length - 1; i >= 0; i--) {
+      const div = nest[i]!;
+      if (div !== masked && isTrivial(div)) continue;
+      div.c = [current];
+      current = div;
+    }
+    return current;
+  }
+  if (!animated) {
     const m = at(0);
     if (!isIdentity(m)) {
       outer.m = exact(m);
