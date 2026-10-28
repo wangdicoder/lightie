@@ -55,7 +55,7 @@ for (const name of FIXTURES) {
       const mismatched = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.1 });
       const ratio = mismatched / (a.width * a.height);
       results.push(`${frame}:${(ratio * 100).toFixed(2)}%`);
-      if (ratio > (CANVAS_FIXTURES.has(name) ? CANVAS_ANTIALIASING_MISMATCH : MAX_MISMATCH)) {
+      if (ratio > (info.canvas || CANVAS_FIXTURES.has(name) ? CANVAS_ANTIALIASING_MISMATCH : MAX_MISMATCH)) {
         failures.push(`frame ${frame}: ${(ratio * 100).toFixed(2)}% of pixels differ`);
         for (const [label, png] of [
           ['lottie-web', a],
