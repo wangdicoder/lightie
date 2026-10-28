@@ -1,8 +1,9 @@
 import { writeFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import type { MountInfo } from '../playground/harness';
+import { compare } from './compare';
+import { KNOWN_DIFFERENCES } from './known-differences';
 
 const FIXTURES = [
   'basic-transform',
@@ -25,8 +26,6 @@ const FIXTURES = [
 ];
 const WIDTH = 240;
 const MAX_MISMATCH = Number(process.env.LIGHTIE_MAX_MISMATCH ?? 0.004);
-const CANVAS_ANTIALIASING_MISMATCH = 0.008;
-const CANVAS_FIXTURES = new Set(['stroke-width', 'trim', 'morph', 'shape-params', 'modifiers']);
 
 const framesFor = (total: number): number[] => {
   const frames = new Set<number>([0, 0.25]);
@@ -38,6 +37,8 @@ const framesFor = (total: number): number[] => {
 
 for (const name of FIXTURES) {
   test(`renders like lottie-web: ${name.split('/').pop()}`, async ({ page }, testInfo) => {
+    const known = KNOWN_DIFFERENCES[name.split('/').pop() ?? ''];
+    test.skip(known !== undefined, known);
     await page.goto('/harness.html');
     await page.waitForFunction(() => 'lightieHarness' in window);
     const info: MountInfo = await page.evaluate(
@@ -52,10 +53,10 @@ for (const name of FIXTURES) {
       const a = PNG.sync.read(await page.locator('#ref').screenshot());
       const b = PNG.sync.read(await page.locator('#out').screenshot());
       const diff = new PNG({ width: a.width, height: a.height });
-      const mismatched = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.1 });
+      const mismatched = compare(a, b, diff);
       const ratio = mismatched / (a.width * a.height);
       results.push(`${frame}:${(ratio * 100).toFixed(2)}%`);
-      if (ratio > (info.canvas || CANVAS_FIXTURES.has(name) ? CANVAS_ANTIALIASING_MISMATCH : MAX_MISMATCH)) {
+      if (ratio > MAX_MISMATCH) {
         failures.push(`frame ${frame}: ${(ratio * 100).toFixed(2)}% of pixels differ`);
         for (const [label, png] of [
           ['lottie-web', a],

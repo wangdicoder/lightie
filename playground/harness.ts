@@ -5,7 +5,6 @@ import { loadFixture } from './fixtures';
 
 export interface MountInfo {
   report: CompileReport;
-  canvas: boolean;
   totalFrames: number;
   width: number;
   height: number;
@@ -58,8 +57,7 @@ window.lightieHarness = {
     });
     await player.painted();
     await settle();
-    const canvas = JSON.stringify(animation.nodes).includes('"k":"canvas"');
-    return { report, canvas, totalFrames: animation.op - animation.ip, width, height };
+    return { report, totalFrames: animation.op - animation.ip, width, height };
   },
   async frame(frame) {
     reference?.goToAndStop(frame, true);
