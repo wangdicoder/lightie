@@ -5,6 +5,7 @@ import { evaluate, type NormKey, type NormProp } from './property';
 export interface TimeMap {
   scale: number;
   offset: number;
+  remap?: (frame: number) => number;
 }
 
 export interface Window {
@@ -35,7 +36,8 @@ export interface TrackContext {
 
 export const toRoot = (map: TimeMap, t: number): number => t * map.scale + map.offset;
 
-export const fromRoot = (map: TimeMap, frame: number): number => (frame - map.offset) / map.scale;
+export const fromRoot = (map: TimeMap, frame: number): number =>
+  map.remap ? map.remap(frame) : (frame - map.offset) / map.scale;
 
 export const offsetOf = (win: Window, frame: number): number => (frame - win.ip) / (win.op - win.ip);
 
@@ -139,6 +141,11 @@ export function isConstant(keys: K[]): boolean {
 export function buildKeys(norm: NormProp, map: TimeMap, dims: number[], ctx: TrackContext): K[] | null {
   if (norm.kind === 'static') return null;
   const { win } = ctx;
+  if (map.remap) {
+    const evalAt = (frame: number) => pickDims(evaluate(norm, fromRoot(map, frame)), dims);
+    ctx.stats.baked++;
+    return [...sample(evalAt, win.ip, win.op, ctx), { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' }];
+  }
   const keys = norm.keys;
   const raw: K[] = [];
   let baked = false;

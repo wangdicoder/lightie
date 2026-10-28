@@ -41,11 +41,26 @@ function assetSource(asset: LottieAsset | undefined): string | undefined {
   return undefined;
 }
 
+function visibleRange(layer: LottieLayer, comp: TimeMap, ctx: LayerContext): [number, number] | null {
+  if (!comp.remap) return [toRoot(comp, layer.ip), toRoot(comp, layer.op)];
+  const { win, sampleRate } = ctx;
+  const step = win.fr / sampleRate;
+  let first = Number.NaN;
+  let last = Number.NaN;
+  for (let frame = win.ip; frame <= win.op; frame += step) {
+    const t = fromRoot(comp, frame);
+    if (t < layer.ip || t >= layer.op) continue;
+    if (Number.isNaN(first)) first = frame;
+    last = frame + step;
+  }
+  return Number.isNaN(first) ? null : [first, Math.min(last, win.op)];
+}
+
 function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, where: string): SceneNode | null {
   const issues = ctx.issues(where);
   const map = comp;
-  const visibility: [number, number] = [toRoot(comp, layer.ip), toRoot(comp, layer.op)];
-  if (visibility[1] <= ctx.win.ip || visibility[0] >= ctx.win.op) return null;
+  const visibility = visibleRange(layer, comp, ctx);
+  if (!visibility || visibility[1] <= ctx.win.ip || visibility[0] >= ctx.win.op) return null;
   if (layer.ddd) issues.add('3D layer');
   if (layer.ao && hasKeyframes(layer.ks.p as never)) issues.add('auto-orient');
   if (layer.ef?.some((effect) => effect.en !== 0)) issues.add('layer effects');
@@ -55,15 +70,20 @@ function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, wher
     case 0: {
       const asset = layer.refId ? ctx.assets.get(layer.refId) : undefined;
       if (!asset?.layers) return null;
-      if (layer.tm) issues.add(hasExpression(layer.tm) ? 'expression' : 'time remap');
+      if (layer.tm && hasExpression(layer.tm)) issues.add('expression');
       if (ctx.depth > 32) {
         issues.add('precomp nesting too deep');
         return null;
       }
-      const child: TimeMap = {
-        scale: comp.scale * (layer.sr ?? 1),
-        offset: (layer.st ?? 0) * comp.scale + comp.offset,
-      };
+      const st = layer.st ?? 0;
+      const sr = layer.sr ?? 1;
+      const child: TimeMap = { scale: comp.scale * sr, offset: st * comp.scale + comp.offset };
+      if (layer.tm) {
+        const remap = normalize(layer.tm, [0]);
+        child.remap = (frame) => (evaluate(remap, fromRoot(comp, frame))[0] ?? 0) * ctx.win.fr;
+      } else if (comp.remap) {
+        child.remap = (frame) => (fromRoot(comp, frame) - st) / sr;
+      }
       ctx.depth++;
       const c = compileComp(asset.layers, child, ctx, `${where} › `);
       ctx.depth--;

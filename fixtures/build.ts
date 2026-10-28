@@ -770,6 +770,49 @@ const fixtures: Record<string, () => Json> = {
     ]);
   },
 
+  'time-remap': () => {
+    nextInd = 1;
+    const op = 60;
+    const slide = {
+      id: 'slide',
+      nm: 'slide',
+      fr: 30,
+      layers: [
+        shapeLayer(
+          'dot',
+          [group('d', [ellipse([0, 0], [36, 36]), fill('#ef476f')])],
+          ks({
+            p: anim(kf(0, [30, 60, 0], LINEAR), end(30, [170, 60, 0])),
+            s: anim(kf(0, [60, 60, 100]), end(30, [130, 130, 100])),
+          }),
+          30,
+        ),
+        shapeLayer('late', [group('l', [rect([100, 100], [40, 16], 8), fill('#118ab2')])], ks(), 30, { ip: 15 }),
+      ],
+    };
+    return composition(
+      'time-remap',
+      200,
+      140,
+      op,
+      [
+        layer(
+          0,
+          'remapped',
+          ks({ p: fixed([100, 70, 0]), a: fixed([100, 70, 0]) }),
+          {
+            refId: 'slide',
+            w: 200,
+            h: 140,
+            tm: anim(kf(0, 0), kf(24, 0.8), kf(36, 0.8, EASE, { h: 1 }), end(56, 0.1)),
+          },
+          op,
+        ),
+      ],
+      { assets: [slide] },
+    );
+  },
+
   modifiers: () => {
     nextInd = 1;
     const op = 60;
