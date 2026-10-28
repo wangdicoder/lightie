@@ -17,6 +17,7 @@
         <a href="#demo">Demo</a>
         <a href="#how">How it works</a>
         <a href="#numbers">Numbers</a>
+        <a href="#support">Browser support</a>
         <a href="#start">Get started</a>
         <a href="https://github.com/wangdicoder/lightie">GitHub</a>
       </nav>
@@ -137,6 +138,65 @@
           Firefox and comparing pixels. Against the 189 sample animations in the lottie-ios repository, 56% compile without
           any fallback, and every one of them that lottie-web itself renders correctly matches.
         </p>
+      </section>
+
+      <section id="support" class="support">
+        <h2>Browser support</h2>
+        <p>
+          The Web Animations API is not new: <code>element.animate()</code> shipped in Chrome 36 (2014), Firefox 48 and
+          Safari 13.1. The newest feature lightie relies on is the individual <code>translate</code>,
+          <code>rotate</code> and <code>scale</code> properties (Chrome and Edge 104, from 2022). In older browsers the
+          player switches to the lottie-web fallback automatically when one is configured.
+        </p>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th></th><th>Chrome / Edge</th><th>Firefox</th><th>Safari</th><th>iOS Safari</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Everything off the main thread</td><td>104</td><td>105</td><td>16.4</td><td>16.4</td></tr>
+              <tr>
+                <td>Native playback; worker-canvas shapes drawn on the main thread</td>
+                <td>104</td><td>72</td><td>14.1</td><td>14.5</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <caption>What lightie uses</caption>
+            <thead>
+              <tr><th>Feature</th><th>Used for</th><th>Chrome</th><th>Firefox</th><th>Safari</th><th>Without it</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>translate</code> / <code>rotate</code> / <code>scale</code></td><td>composited transforms</td>
+                <td>104</td><td>72</td><td>14.1</td><td>lottie-web fallback</td>
+              </tr>
+              <tr>
+                <td><code>element.animate()</code></td><td>every animation</td><td>75</td><td>48</td><td>13.1</td>
+                <td>present wherever the transforms are</td>
+              </tr>
+              <tr>
+                <td><code>clip-path: path()</code></td><td>masks and track mattes</td><td>88</td><td>71</td><td>13.1</td>
+                <td>present wherever the transforms are</td>
+              </tr>
+              <tr>
+                <td><code>Animation.commitStyles()</code></td><td>sharp paused frames</td><td>84</td><td>75</td><td>13.1</td>
+                <td>present wherever the transforms are</td>
+              </tr>
+              <tr>
+                <td>OffscreenCanvas in a worker</td><td>stroke width, trim paths, morphing</td><td>69</td><td>105</td>
+                <td>16.4</td><td>drawn on the main thread</td>
+              </tr>
+              <tr>
+                <td>Custom elements</td><td><code>&lt;lightie-player&gt;</code></td><td>54</td><td>63</td><td>10.1</td>
+                <td>present wherever the transforms are</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="source">Versions from MDN browser-compat-data 8.1.7.</p>
       </section>
 
       <section id="start" class="start">

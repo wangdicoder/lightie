@@ -50,6 +50,15 @@ Other browsers: `pnpm bench:video` records each browser while the main thread is
 
 Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). A pixel only counts as different when neither image has a matching colour within one pixel of it, so edges that are anti-aliased differently by SVG, canvas or clip-path are not counted. The limit is 0.4% of pixels per frame; the worst bundled frame is 0.17% (Firefox, stroke-width).
 
+## Browser support
+
+| | Chrome / Edge | Firefox | Safari | iOS Safari |
+| --- | --- | --- | --- | --- |
+| Everything off the main thread | 104 | 105 | 16.4 | 16.4 |
+| Native playback, worker-canvas shapes drawn on the main thread | 104 | 72 | 14.1 | 14.5 |
+
+The Web Animations API itself is old: `element.animate()` shipped in Chrome 36, Firefox 48 and Safari 13.1. The newest requirement is the individual `translate` / `rotate` / `scale` properties. In browsers without them, `createPlayer` switches to the lottie-web fallback when one is configured. Versions are from MDN browser-compat-data 8.1.7.
+
 ## Install
 
 ```sh

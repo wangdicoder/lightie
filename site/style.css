@@ -368,3 +368,21 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+.support > p {
+  color: var(--muted);
+  max-width: 760px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.support table {
+  min-width: 560px;
+}
+
+.support .source {
+  font-size: 13px;
+}
