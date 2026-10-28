@@ -76,6 +76,14 @@ function visibleRange(layer: LottieLayer, comp: TimeMap, ctx: LayerContext): [nu
   return [first, Number.isNaN(last) || last < first ? win.op : last];
 }
 
+function hasAnyExpression(node: unknown): boolean {
+  if (!node || typeof node !== 'object') return false;
+  if (Array.isArray(node)) return node.some(hasAnyExpression);
+  const record = node as Record<string, unknown>;
+  if (typeof record.x === 'string' && 'k' in record) return true;
+  return Object.entries(record).some(([key, value]) => key !== 'layers' && hasAnyExpression(value));
+}
+
 function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, where: string): SceneNode | null {
   const issues = ctx.issues(where);
   const map = comp;
@@ -84,6 +92,7 @@ function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, wher
   if (layer.ddd) issues.add('3D layer');
   if (layer.ao && hasKeyframes(layer.ks.p as never)) issues.add('auto-orient');
   if (layer.ef?.some((effect) => effect.en !== 0)) issues.add('layer effects');
+  if (hasAnyExpression(layer)) issues.add('expression');
 
   let node: SceneNode;
   switch (layer.ty) {

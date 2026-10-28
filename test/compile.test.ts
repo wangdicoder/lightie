@@ -221,6 +221,30 @@ describe('compile', () => {
     expect(rzOnly.m).toBeUndefined();
   });
 
+  it("unrolls loopOut('cycle') expressions into keyframes", () => {
+    const doc = minimal('5.7.0', {
+      o: {
+        a: 1,
+        x: "var $bm_rt;\n$bm_rt = loopOut('Cycle');",
+        k: [
+          { t: 0, s: [0], o: { x: [0], y: [0] }, i: { x: [1], y: [1] } },
+          { t: 10, s: [100] },
+        ],
+      },
+    });
+    const { animation, report } = compile(doc);
+    expect(report.unsupported).toEqual([]);
+    const track = findTrack(animation.nodes[0]!, 'opacity')!;
+    expect(trackValue(track, 0.5)[0]).toBeCloseTo(0.5, 2);
+    expect(trackValue(track, 0.9)[0]).toBeCloseTo(0.7, 2);
+  });
+
+  it('reports expressions on shape properties, not only on transforms', () => {
+    const doc = minimal('5.7.0', {});
+    (doc.layers[0]!.shapes[1] as { c: Record<string, unknown> }).c.x = 'wiggle(2, 0.1)';
+    expect(compile(doc).report.unsupported.map((u) => u.feature)).toEqual(['expression']);
+  });
+
   it('moves stroke width animations to a canvas painted off the main thread', () => {
     const { animation, report } = compile(fixture('stroke-width'));
     expect(report.tracks).toEqual({ composited: 0, paint: 1, baked: 0 });
