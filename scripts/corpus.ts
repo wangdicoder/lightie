@@ -1,6 +1,11 @@
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { compile } from '../dist/compiler.js';
+
+const built = new URL('../dist/compiler.js', import.meta.url).href;
+const { compile } = (await import(built).catch(() => {
+  process.stderr.write('Run `pnpm build` first: this script uses the built compiler in dist/.\n');
+  process.exit(1);
+})) as typeof import('../src/compiler/index');
 
 const root = resolve(process.argv[2] ?? '');
 if (!process.argv[2]) {
