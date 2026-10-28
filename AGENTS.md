@@ -42,6 +42,12 @@ Run `pnpm test:e2e` after any compiler or player change; it is the merge gate fo
 - Tests and screenshots must `await player.painted()` after `seek()`; canvas frames arrive asynchronously from the worker.
 - Track mattes compile to an outer div that carries the matte transform plus a static `clip-path` (the matte shape in matte space) and an inner div with the inverse transform, so the matted content stays put while everything stays composited. Animated matte transforms are sampled into `transform` matrix tracks.
 
+## Measuring main-thread independence
+
+- Chromium: `pnpm bench` counts `Display::DrawAndSwap` trace events while the page runs a long task.
+- Firefox: `pnpm bench:video` (screen recording; needs `ffmpeg` on PATH).
+- Safari/WebKit: no automated signal. Playwright screenshots wait for the main thread in every browser, and its WebKit recording stalls with it. Check by hand: `pnpm dev`, open the playground in Safari, press "Block main thread".
+
 ## Conventions
 
 - Code comments are not used; names and tests carry intent.

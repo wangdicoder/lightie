@@ -40,6 +40,8 @@ Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
 | matte | lottie-web | 25 ms | 100 ms | 30 | 1 |
 | matte | lightie | 0 ms | 0 ms | 30 | 30 |
 
+Other browsers: `pnpm bench:video` records each browser while the main thread is blocked for 2 s. In Firefox, lottie-web stops changing for 1.85 s while lightie keeps moving, both for composited tracks and for worker-drawn canvases. Playwright's WebKit recording stalls with the main thread, so Safari was checked by hand in the playground instead: lightie keeps moving during the block.
+
 Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). The worst frame differs in 0.19% of its pixels, which is anti-aliasing. Shapes drawn on a canvas (stroke width, trim paths, morphing) are allowed 0.8%, because canvas and SVG anti-alias thin strokes slightly differently; the worst measured frame is 0.66% (Firefox, a 2 px ring).
 
 ## Install
