@@ -359,7 +359,7 @@ function parametricMorph(
       if (built) {
         if (isConstant(built)) return { c: true, v: built[0]!.v };
         ctx.stats.paint++;
-        return { c: true, v: toKeyframes(built, (v) => v, 3) };
+        return { c: true, v: toKeyframes(holdTopologyChanges(built), (v) => v, 3) };
       }
     }
   }
@@ -367,7 +367,11 @@ function parametricMorph(
     (frame) => {
       const t = fromRoot(map, frame);
       const geo = parametric(shape, (name, fallback) =>
-        name === 'pt' ? fixedValue(name, fallback) : evaluate(normalize(prop(shape, name), fallback), t),
+        name === 'pt'
+          ? fixedValue(name, fallback)
+          : name === 'r' && shape.ty === 'rc'
+            ? [Math.max(1e-4, evaluate(normalize(prop(shape, name), fallback), t)[0] ?? 0)]
+            : evaluate(normalize(prop(shape, name), fallback), t),
       );
       return geo ? flatten(withRounds(geo, ref, t), m) : [];
     },
@@ -550,6 +554,12 @@ function flatten(path: PathData, m: Matrix): number[] {
   return out;
 }
 
+const holdTopologyChanges = (keys: K[]): K[] =>
+  keys.map((key, i) => {
+    const next = keys[i + 1];
+    return next && next.v.length !== key.v.length ? { ...key, e: 'hold' } : key;
+  });
+
 function sampled(evalAt: (frame: number) => number[], closed: boolean, ctx: TrackContext): CanvasShape {
   const { win } = ctx;
   const keys: K[] = [
@@ -557,7 +567,7 @@ function sampled(evalAt: (frame: number) => number[], closed: boolean, ctx: Trac
     { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' },
   ];
   ctx.stats.baked++;
-  return { c: closed, v: toKeyframes(keys, (v) => v, 3) };
+  return { c: closed, v: toKeyframes(holdTopologyChanges(keys), (v) => v, 3) };
 }
 
 function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, issues: Issues): CanvasShape | null {
@@ -599,7 +609,7 @@ function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, 
   if (!built) return null;
   if (isConstant(built)) return { c: closed, v: built[0]!.v };
   ctx.stats.paint++;
-  return { c: closed, v: toKeyframes(built, (v) => v, 3) };
+  return { c: closed, v: toKeyframes(holdTopologyChanges(built), (v) => v, 3) };
 }
 
 function trimValue(

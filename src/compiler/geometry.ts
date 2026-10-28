@@ -82,7 +82,7 @@ export function roundCorners(path: PathData, round: number): PathData {
     const o = path.o[k]!;
     const i = path.i[k]!;
     const sharp = v[0] === o[0] && v[1] === o[1] && v[0] === i[0] && v[1] === i[1];
-    if (!sharp || round <= 0 || ((k === 0 || k === n - 1) && !path.c)) {
+    if (!sharp || ((k === 0 || k === n - 1) && !path.c)) {
       push(v, o, i);
       continue;
     }

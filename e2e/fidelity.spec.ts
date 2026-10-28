@@ -29,9 +29,10 @@ const CANVAS_ANTIALIASING_MISMATCH = 0.008;
 const CANVAS_FIXTURES = new Set(['stroke-width', 'trim', 'morph', 'shape-params', 'modifiers']);
 
 const framesFor = (total: number): number[] => {
-  const frames = new Set<number>([0]);
+  const frames = new Set<number>([0, 0.25]);
   for (let n = 1; n < 8; n++) frames.add(Math.round(((total * n) / 8 + 0.37) * 100) / 100);
   frames.add(total - 1);
+  frames.add(total - 0.25);
   return [...frames].sort((a, b) => a - b);
 };
 

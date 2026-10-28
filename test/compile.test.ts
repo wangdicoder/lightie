@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compiler/index';
 import type { LottieAnimationData, LottieTransform } from '../src/compiler/lottie';
 import { evaluate, normalize } from '../src/compiler/property';
-import type { DivNode, SceneNode, SvgNode, SvgPath } from '../src/types';
+import type { DivNode, Keyframe, SceneNode, SvgNode, SvgPath } from '../src/types';
 import { findTrack, fixture, trackValue, walkNodes } from './helpers';
 
 const FIXTURES = [
@@ -150,6 +150,27 @@ describe('compile', () => {
       }
     }
   });
+
+  it.each(['modifiers', 'shape-params', 'morph'])(
+    'never interpolates between different path topologies in %s',
+    (name) => {
+      const { animation } = compile(fixture(name));
+      const shapes: Keyframe[][] = [];
+      walkNodes(animation.nodes, (node) => {
+        if (node.k !== 'canvas') return;
+        for (const path of node.c)
+          for (const shape of path.shapes ?? []) if (Array.isArray(shape.v[0])) shapes.push(shape.v as Keyframe[]);
+      });
+      expect(shapes.length).toBeGreaterThan(0);
+      for (const keys of shapes) {
+        for (let i = 0; i < keys.length - 1; i++) {
+          const a = keys[i]!;
+          const b = keys[i + 1]!;
+          if ((a[1] as number[]).length !== (b[1] as number[]).length) expect(a[2]).toBe(1);
+        }
+      }
+    },
+  );
 
   it('moves stroke width animations to a canvas painted off the main thread', () => {
     const { animation, report } = compile(fixture('stroke-width'));
