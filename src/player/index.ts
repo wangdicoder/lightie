@@ -102,7 +102,12 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
   root.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden';
   container.append(root);
 
-  if (animation.unsupported?.length && options.fallback && animation.source !== undefined) {
+  const capable =
+    typeof Element !== 'undefined' &&
+    'animate' in Element.prototype &&
+    typeof CSS !== 'undefined' &&
+    CSS.supports('translate', '1px');
+  if ((animation.unsupported?.length || !capable) && options.fallback && animation.source !== undefined) {
     return fallbackPlayer(root, animation, options, { loop, autoplay, speed }, totalFrames, duration);
   }
 
