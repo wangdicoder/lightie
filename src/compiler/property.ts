@@ -34,7 +34,7 @@ export function hasExpression(prop: LottieProperty | undefined): boolean {
 
 const pick = (v: number | number[], d: number): number => (Array.isArray(v) ? (v[d] ?? v[0] ?? 0) : v);
 
-function easesOf(o: LottieBezier | undefined, i: LottieBezier | undefined): Cubic[] {
+export function easesOf(o: LottieBezier | undefined, i: LottieBezier | undefined): Cubic[] {
   if (!o || !i) return [LINEAR];
   const dims = Math.max(...[o.x, o.y, i.x, i.y].map((v) => (Array.isArray(v) ? v.length : 1)), 1);
   const out: Cubic[] = [];

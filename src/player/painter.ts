@@ -37,7 +37,7 @@ export function renderer() {
     canvas: Target;
     spec: Spec;
     clock: Clock;
-    shapes: Path2D[];
+    shapes: (Path2D | undefined)[];
     fills: (string | CanvasGradient | undefined)[];
     strokes: (string | CanvasGradient | undefined)[];
     last: number;
@@ -96,6 +96,169 @@ export function renderer() {
     for (const [offset, color, alpha] of p.stops) g.addColorStop(offset, alpha === 1 ? color : rgba(color, alpha));
     return g;
   };
+  const N = 24;
+  const at = (c: number[], t: number, k: number) => {
+    const mt = 1 - t;
+    return mt * mt * mt * c[k]! + 3 * mt * mt * t * c[k + 2]! + 3 * mt * t * t * c[k + 4]! + t * t * t * c[k + 6]!;
+  };
+  const table = (c: number[]) => {
+    const out = [0];
+    let px = c[0]!;
+    let py = c[1]!;
+    let acc = 0;
+    for (let j = 1; j <= N; j++) {
+      const x = at(c, j / N, 0);
+      const y = at(c, j / N, 1);
+      acc += Math.hypot(x - px, y - py);
+      out.push(acc);
+      px = x;
+      py = y;
+    }
+    return out;
+  };
+  const paramAt = (lengths: number[], l: number) => {
+    const total = lengths[N]!;
+    if (l <= 0 || total <= 0) return 0;
+    if (l >= total) return 1;
+    let j = 1;
+    while (lengths[j]! < l) j++;
+    const a = lengths[j - 1]!;
+    const b = lengths[j]!;
+    return (j - 1 + (b > a ? (l - a) / (b - a) : 0)) / N;
+  };
+  const mix = (a: number[], b: number[], t: number) => [a[0]! + (b[0]! - a[0]!) * t, a[1]! + (b[1]! - a[1]!) * t];
+  const split = (c: number[], t: number): [number[], number[]] => {
+    const p0 = [c[0]!, c[1]!];
+    const p1 = [c[2]!, c[3]!];
+    const p2 = [c[4]!, c[5]!];
+    const p3 = [c[6]!, c[7]!];
+    const a = mix(p0, p1, t);
+    const b = mix(p1, p2, t);
+    const d = mix(p2, p3, t);
+    const e = mix(a, b, t);
+    const f = mix(b, d, t);
+    const m = mix(e, f, t);
+    return [
+      [...p0, ...a, ...e, ...m],
+      [...m, ...f, ...d, ...p3],
+    ];
+  };
+  const part = (c: number[], t0: number, t1: number) => {
+    const left = t1 >= 1 ? c : split(c, t1)[0];
+    return t0 <= 0 ? left : split(left, t1 > 0 ? t0 / t1 : 0)[1];
+  };
+  interface Geo {
+    cubics: number[][];
+    lengths: number[][];
+    total: number;
+    closed: boolean;
+  }
+  const geoOf = (flat: number[], closed: boolean): Geo => {
+    const n = Math.floor(flat.length / 6);
+    const cubics: number[][] = [];
+    for (let k = 0; k < n - (closed ? 0 : 1); k++) {
+      const a = k * 6;
+      const b = ((k + 1) % n) * 6;
+      cubics.push([
+        flat[a]!,
+        flat[a + 1]!,
+        flat[a + 4]!,
+        flat[a + 5]!,
+        flat[b + 2]!,
+        flat[b + 3]!,
+        flat[b]!,
+        flat[b + 1]!,
+      ]);
+    }
+    const lengths = cubics.map(table);
+    return { cubics, lengths, total: lengths.reduce((sum, l) => sum + l[N]!, 0), closed };
+  };
+  const range = (g: Geo, from: number, to: number, out: number[][]) => {
+    let acc = 0;
+    for (const [k, c] of g.cubics.entries()) {
+      const lengths = g.lengths[k]!;
+      const len = lengths[N]!;
+      const a = Math.max(from - acc, 0);
+      const b = Math.min(to - acc, len);
+      if (b > a) out.push(a <= 0 && b >= len ? c : part(c, paramAt(lengths, a), paramAt(lengths, b)));
+      acc += len;
+    }
+    return out;
+  };
+  const trace = (target: Path2D, cubics: number[][], close: boolean) => {
+    const first = cubics[0];
+    if (!first) return;
+    target.moveTo(first[0]!, first[1]!);
+    for (const c of cubics) target.bezierCurveTo(c[2]!, c[3]!, c[4]!, c[5]!, c[6]!, c[7]!);
+    if (close) target.closePath();
+  };
+  const edges = (s: number, e: number, length: number, added: number, total: number): number[][] => {
+    const windows =
+      e <= 1
+        ? [[s, e]]
+        : s >= 1
+          ? [[s - 1, e - 1]]
+          : [
+              [s, 1],
+              [0, e - 1],
+            ];
+    const out: number[][] = [];
+    for (const [ws, we] of windows) {
+      if (we! * total < added || ws! * total > added + length) continue;
+      out.push([
+        ws! * total <= added ? 0 : (ws! * total - added) / length,
+        we! * total >= added + length ? 1 : (we! * total - added) / length,
+      ]);
+    }
+    return out.length ? out : [[0, 0]];
+  };
+  const num = (v: number | Keyframe[], p: number) => (typeof v === 'number' ? v : (sample(v, p)[0] ?? 0));
+  const shapeOf = (path: SvgPath, p: number): Path2D => {
+    const target = new Path2D();
+    const geos = (path.shapes ?? []).map((shape) =>
+      geoOf(Array.isArray(shape.v[0]) ? sample(shape.v as Keyframe[], p) : (shape.v as number[]), shape.c),
+    );
+    const trim = path.trim;
+    let s = 0;
+    let e = 1;
+    if (trim) {
+      let o = (num(trim.o, p) % 360) / 360;
+      if (o < 0) o += 1;
+      const sv = num(trim.s, p) / 100;
+      const ev = num(trim.e, p) / 100;
+      s = sv > 1 ? 1 + o : sv < 0 ? o : sv + o;
+      e = ev > 1 ? 1 + o : ev < 0 ? o : ev + o;
+      if (s > e) [s, e] = [e, s];
+      s = Math.round(s * 10000) / 10000;
+      e = Math.round(e * 10000) / 10000;
+      if (s === e) return target;
+    }
+    if (!trim || (s === 0 && e === 1) || (s === 1 && e === 0)) {
+      for (const g of geos) trace(target, g.cubics, g.closed);
+      return target;
+    }
+    const total = geos.reduce((sum, g) => sum + g.total, 0);
+    let added = 0;
+    for (const g of geos) {
+      const spans = trim.m === 2 && geos.length > 1 ? edges(s, e, g.total, added, total) : [[s, e]];
+      added += g.total;
+      const l = g.total;
+      for (const [a, b] of spans) {
+        const head = b! <= 1 ? [a! * l, b! * l] : a! >= 1 ? [(a! - 1) * l, (b! - 1) * l] : [a! * l, l];
+        const tail = b! > 1 && a! < 1 ? [0, (b! - 1) * l] : undefined;
+        if (head[0] === head[1]) continue;
+        const first = range(g, head[0]!, head[1]!, []);
+        if (!tail) trace(target, first, false);
+        else if (g.closed) trace(target, range(g, tail[0]!, tail[1]!, first), false);
+        else {
+          trace(target, first, false);
+          trace(target, range(g, tail[0]!, tail[1]!, []), false);
+        }
+      }
+    }
+    return target;
+  };
+  const fixed = (path: SvgPath) => !path.trim && (path.shapes ?? []).every((shape) => !Array.isArray(shape.v[0]));
   const draw = (item: Item, now: number): boolean => {
     const p = progress(item.clock, now);
     if (p === item.last) return false;
@@ -117,7 +280,7 @@ export function renderer() {
         const t = track(name);
         return t ? `rgb(${sample(t.k, p).map(Math.round).join(',')})` : fixed;
       };
-      const shape = item.shapes[i] as Path2D;
+      const shape = item.shapes[i] ?? shapeOf(path, p);
       if (path.fill !== undefined) {
         ctx.fillStyle = color('fill', item.fills[i]) ?? '#000';
         ctx.globalAlpha = value('fillOpacity', path.fo ?? 1);
@@ -147,7 +310,9 @@ export function renderer() {
         canvas,
         spec,
         clock,
-        shapes: spec.paths.map((path) => new Path2D(path.d)),
+        shapes: spec.paths.map((path) =>
+          !path.shapes ? new Path2D(path.d) : fixed(path) ? shapeOf(path, 0) : undefined,
+        ),
         fills: spec.paths.map((path) => paint(ctx, path.fill)),
         strokes: spec.paths.map((path) => paint(ctx, path.stroke)),
         last: Number.NaN,

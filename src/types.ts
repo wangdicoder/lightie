@@ -72,8 +72,22 @@ export interface SvgGroup {
   bm?: string;
 }
 
+export interface CanvasShape {
+  c: boolean;
+  v: number[] | Keyframe[];
+}
+
+export interface Trim {
+  s: number | Keyframe[];
+  e: number | Keyframe[];
+  o: number | Keyframe[];
+  m: 1 | 2;
+}
+
 export interface SvgPath {
   d: string;
+  shapes?: CanvasShape[];
+  trim?: Trim;
   fill?: string | Gradient;
   stroke?: string | Gradient;
   fo?: number;

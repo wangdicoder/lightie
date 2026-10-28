@@ -39,7 +39,7 @@ describe('vite plugin', () => {
   it('emits the source as an asset for the fallback renderer when features are unsupported', async () => {
     const { load, context } = setup('build');
     const code = await load(`${fixture('unsupported')}?lightie`);
-    expect(context.warn).toHaveBeenCalledWith(expect.stringContaining('trim path'));
+    expect(context.warn).toHaveBeenCalledWith(expect.stringContaining('expression'));
     expect(context.emitFile).toHaveBeenCalledWith(expect.objectContaining({ type: 'asset', name: 'unsupported.json' }));
     expect(code).toContain('animation.source = import.meta.ROLLUP_FILE_URL_ref0;');
   });
@@ -48,6 +48,6 @@ describe('vite plugin', () => {
     const dev = setup('serve');
     expect(await dev.load(`${fixture('unsupported')}?lightie`)).toContain('"source":{');
     const strict = setup('build', { failOnUnsupported: true });
-    await expect(strict.load(`${fixture('unsupported')}?lightie`)).rejects.toThrow('trim path');
+    await expect(strict.load(`${fixture('unsupported')}?lightie`)).rejects.toThrow('expression');
   });
 });

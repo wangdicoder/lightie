@@ -181,17 +181,20 @@ function easingOf(e: KEase): Easing | undefined {
 
 const PAINT: ReadonlySet<TrackProperty> = new Set(['fill', 'stroke', 'fillOpacity', 'strokeOpacity', 'strokeWidth']);
 
-export function toTrack(p: TrackProperty, keys: K[], convert: (v: number[]) => number[], ctx: TrackContext): Track {
-  if (PAINT.has(p)) ctx.stats.paint++;
-  else ctx.stats.composited++;
-  const k: Keyframe[] = keys.map((key) => {
-    const v = convert(key.v).map((n) => round(n));
+export function toKeyframes(keys: K[], convert: (v: number[]) => number[], digits = 4): Keyframe[] {
+  return keys.map((key) => {
+    const v = convert(key.v).map((n) => round(n, digits));
     const frame: Keyframe = [round(key.o, 6), v.length === 1 ? v[0]! : v];
     const e = easingOf(key.e);
     if (e !== undefined) frame.push(e);
     return frame;
   });
-  return { p, k };
+}
+
+export function toTrack(p: TrackProperty, keys: K[], convert: (v: number[]) => number[], ctx: TrackContext): Track {
+  if (PAINT.has(p)) ctx.stats.paint++;
+  else ctx.stats.composited++;
+  return { p, k: toKeyframes(keys, convert) };
 }
 
 export function frameAtOffset(win: Window, offset: number): number {

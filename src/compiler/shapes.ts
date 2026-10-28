@@ -1,6 +1,8 @@
 import type {
+  CanvasShape,
   DivNode,
   Gradient,
+  Keyframe,
   Matrix,
   SceneNode,
   SvgGroup,
@@ -21,14 +23,25 @@ import {
   rectPath,
   starPath,
 } from './geometry';
-import type { LottiePathValue, LottieProperty, LottieShape, LottieTransform } from './lottie';
-import { hasExpression, hasKeyframes, type NormProp, normalize } from './property';
-import { buildKeys, isConstant, type K, type KEase, round, type TimeMap, type TrackContext, toTrack } from './track';
+import type { LottieKeyframe, LottiePathValue, LottieProperty, LottieShape, LottieTransform } from './lottie';
+import { easesOf, hasExpression, hasKeyframes, type NormKey, type NormProp, normalize } from './property';
+import {
+  buildKeys,
+  isConstant,
+  type K,
+  type KEase,
+  round,
+  type TimeMap,
+  type TrackContext,
+  toKeyframes,
+  toTrack,
+} from './track';
 import { compileTransform, type Issues } from './transform';
 
 interface ShapeRef {
   item: LottieShape;
   chain: (LottieShape | undefined)[];
+  trims: LottieShape[];
 }
 
 interface StyleOp {
@@ -53,7 +66,6 @@ type Op = StyleOp | GroupOp;
 const STYLES = new Set(['fl', 'st', 'gf', 'gs']);
 const GEOMETRY = new Set(['sh', 'rc', 'el', 'sr']);
 const MODIFIERS: Record<string, string> = {
-  tm: 'trim path',
   rd: 'rounded corners',
   rp: 'repeater',
   pb: 'pucker & bloat',
@@ -127,9 +139,18 @@ function staticMatrix(tr: LottieShape): Matrix {
 
 const roundMatrix = (m: Matrix): Matrix => m.map((v) => round(v, 6)) as Matrix;
 
-function walk(items: LottieShape[], chain: (LottieShape | undefined)[], open: StyleOp[], issues: Issues): Op[] {
+const isMorphing = (shape: LottieShape): boolean => shape.ty === 'sh' && hasKeyframes(prop(shape, 'ks'));
+
+function walk(
+  items: LottieShape[],
+  chain: (LottieShape | undefined)[],
+  open: StyleOp[],
+  trims: LottieShape[],
+  issues: Issues,
+): Op[] {
   const ops: Op[] = [];
   const own: StyleOp[] = [];
+  const ownTrims: LottieShape[] = [];
   for (let n = items.length - 1; n >= 0; n--) {
     const item = items[n]!;
     if (STYLES.has(item.ty)) {
@@ -142,18 +163,30 @@ function walk(items: LottieShape[], chain: (LottieShape | undefined)[], open: St
     } else if (item.ty === 'gr') {
       const children = Array.isArray(item.it) ? (item.it as LottieShape[]) : [];
       const tr = children.find((child) => child.ty === 'tr');
-      const childOps = walk(children, [...chain, tr], open, issues);
+      const childOps = walk(children, [...chain, tr], open, trims, issues);
       const html = isAnimatedGroup(tr) || childOps.some((child) => child.html);
       ops.push({ kind: 'group', item, tr, ops: childOps, html });
     } else if (GEOMETRY.has(item.ty)) {
       if (item.hd) continue;
-      for (const style of open) style.shapes.push({ item, chain });
+      if (trims.length > 1) issues.add('multiple trim paths');
+      for (const style of open) style.shapes.push({ item, chain, trims: trims.slice() });
+    } else if (item.ty === 'tm') {
+      if (item.hd) continue;
+      ownTrims.push(item);
+      trims.push(item);
     } else {
       const modifier = MODIFIERS[item.ty];
       if (modifier) issues.add(modifier);
     }
   }
-  for (const style of own) open.splice(open.indexOf(style), 1);
+  for (const style of own) {
+    open.splice(open.indexOf(style), 1);
+    if (style.shapes.some((ref) => ref.trims.length || isMorphing(ref.item))) {
+      style.mode = 'canvas';
+      style.html = true;
+    }
+  }
+  for (const trim of ownTrims) trims.splice(trims.indexOf(trim), 1);
   return ops;
 }
 
@@ -366,32 +399,132 @@ function styleD(op: StyleOp, issues: Issues, bounds?: Bounds): string {
   return d;
 }
 
+function flatten(path: PathData, m: Matrix): number[] {
+  const out: number[] = [];
+  const at = (p: number[] | undefined) => {
+    const x = p?.[0] ?? 0;
+    const y = p?.[1] ?? 0;
+    out.push(round(m[0] * x + m[2] * y + m[4], 3), round(m[1] * x + m[3] * y + m[5], 3));
+  };
+  for (const [n, v] of path.v.entries()) {
+    at(v);
+    at(path.i[n]);
+    at(path.o[n]);
+  }
+  return out;
+}
+
+function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, issues: Issues): CanvasShape | null {
+  if (!isMorphing(ref.item)) {
+    const geo = geometry(ref.item, issues);
+    return geo ? { c: geo.c, v: flatten(geo, m) } : null;
+  }
+  const frames = prop(ref.item, 'ks')!.k as LottieKeyframe[];
+  const keys: NormKey[] = [];
+  let closed = true;
+  for (const [n, kf] of frames.entries()) {
+    const value =
+      (kf.s as LottiePathValue[] | undefined)?.[0] ?? (frames[n - 1]?.e as LottiePathValue[] | undefined)?.[0];
+    if (!value?.v) continue;
+    closed = value.c ?? closed;
+    keys.push({ t: kf.t, v: flatten(fromLottiePath(value), m), hold: kf.h === 1, ease: easesOf(kf.o, kf.i) });
+  }
+  const first = keys[0];
+  if (!first) return null;
+  if (keys.length === 1) return { c: closed, v: first.v };
+  const built = buildKeys(
+    { kind: 'anim', keys },
+    map,
+    first.v.map((_, i) => i),
+    ctx,
+  );
+  if (!built) return null;
+  if (isConstant(built)) return { c: closed, v: built[0]!.v };
+  ctx.stats.paint++;
+  return { c: closed, v: toKeyframes(built, (v) => v, 3) };
+}
+
+function trimValue(
+  p: LottieProperty | undefined,
+  fallback: number,
+  map: TimeMap,
+  ctx: TrackContext,
+): number | Keyframe[] {
+  const norm = normalize(p, [fallback]);
+  const keys = buildKeys(norm, map, [0], ctx);
+  if (!keys) return norm.kind === 'static' ? (norm.v[0] ?? fallback) : fallback;
+  if (isConstant(keys)) return keys[0]!.v[0] ?? fallback;
+  ctx.stats.paint++;
+  return toKeyframes(keys, (v) => v);
+}
+
 function canvasStyle(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SceneNode | null {
+  const groups = new Map<LottieShape | undefined, CanvasShape[]>();
+  for (const ref of [...op.shapes].reverse()) {
+    const between = ref.chain.slice(op.depth);
+    if (between.some(isMoving)) {
+      issues.add('animated group transform between a style and its shapes');
+      continue;
+    }
+    let m: Matrix = IDENTITY;
+    for (const tr of between) if (tr) m = multiply(m, staticMatrix(tr));
+    const shape = canvasShape(ref, m, map, ctx, issues);
+    if (!shape) continue;
+    const trim = ref.trims[ref.trims.length - 1];
+    groups.set(trim, [...(groups.get(trim) ?? []), shape]);
+  }
+  const base = groups.size ? stylePath(op, map, ctx, issues, 'M0 0') : null;
+  if (!base) return null;
+  delete base.bm;
   const bounds: Bounds = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, -Infinity, -Infinity];
-  styleD(op, issues, bounds);
-  const path = stylePath(op, map, ctx, issues);
-  if (!path || !Number.isFinite(bounds[0])) return null;
-  delete path.bm;
+  const paths: SvgPath[] = [];
+  for (const [trim, shapes] of groups) {
+    const path: SvgPath = { ...base, d: '', shapes };
+    if (trim) {
+      path.trim = {
+        s: trimValue(prop(trim, 's'), 0, map, ctx),
+        e: trimValue(prop(trim, 'e'), 100, map, ctx),
+        o: trimValue(prop(trim, 'o'), 0, map, ctx),
+        m: trim.m === 2 ? 2 : 1,
+      };
+    }
+    paths.push(path);
+    for (const shape of shapes) {
+      const values =
+        shape.v.length && Array.isArray(shape.v[0])
+          ? (shape.v as Keyframe[]).map((k) => k[1] as number[])
+          : [shape.v as number[]];
+      for (const flat of values) {
+        for (let n = 0; n + 1 < flat.length; n += 2) {
+          bounds[0] = Math.min(bounds[0], flat[n]!);
+          bounds[1] = Math.min(bounds[1], flat[n + 1]!);
+          bounds[2] = Math.max(bounds[2], flat[n]!);
+          bounds[3] = Math.max(bounds[3], flat[n + 1]!);
+        }
+      }
+    }
+  }
+  if (!Number.isFinite(bounds[0])) return null;
   const widths = [
-    path.sw ?? 0,
-    ...(path.a ?? []).filter((t) => t.p === 'strokeWidth').flatMap((t) => t.k.map((k) => Number(k[1]))),
+    base.sw ?? 0,
+    ...(base.a ?? []).filter((t) => t.p === 'strokeWidth').flatMap((t) => t.k.map((k) => Number(k[1]))),
   ];
-  const reach = path.stroke ? (Math.max(...widths) / 2) * (path.lj === 'miter' ? Math.max(1, path.ml ?? 4) : 1) : 0;
+  const reach = base.stroke ? (Math.max(...widths) / 2) * (base.lj === 'miter' ? Math.max(1, base.ml ?? 4) : 1) : 0;
   const pad = reach + 2;
   const x = Math.floor(bounds[0] - pad);
   const y = Math.floor(bounds[1] - pad);
   const node: SceneNode = {
     k: 'canvas',
     box: [x, y, Math.ceil(bounds[2] + pad) - x, Math.ceil(bounds[3] + pad) - y],
-    c: [path],
+    c: paths,
   };
   const bm = blendMode(op.item.bm, issues);
   if (bm) node.bm = bm;
   return node;
 }
 
-function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SvgPath | null {
-  const d = styleD(op, issues);
+function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues, given?: string): SvgPath | null {
+  const d = given ?? styleD(op, issues);
   if (!d) return null;
   const style = op.item;
   const path: SvgPath = { d };
@@ -561,6 +694,6 @@ function emit(ops: Op[], target: SceneNode[], map: TimeMap, ctx: TrackContext, i
 
 export function compileShapes(shapes: LottieShape[], map: TimeMap, ctx: TrackContext, issues: Issues): SceneNode[] {
   const out: SceneNode[] = [];
-  emit(walk(shapes, [], [], issues), out, map, ctx, issues);
+  emit(walk(shapes, [], [], [], issues), out, map, ctx, issues);
   return out;
 }

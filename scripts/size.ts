@@ -18,7 +18,7 @@ const ENTRIES: Entry[] = [
   {
     name: 'paint worker (lazy)',
     code: `export { attach } from '${process.cwd()}/src/player/painter.ts';`,
-    budget: 3000,
+    budget: 4000,
   },
 ];
 

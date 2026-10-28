@@ -38,7 +38,7 @@ Run `pnpm test:e2e` after any compiler or player change; it is the merge gate fo
 - WebKit drops `opacity` on a zero-sized element whose content overflows, so node divs are 1 px × 1 px.
 - Chrome does not composite two animations of the same property on one element. The compiler emits at most one track per property per node; keep it that way.
 - SVG paint properties never run on the compositor. Colour animations are compiled into cross-faded opaque copies (`crossFade` in `src/compiler/shapes.ts`) and fill/stroke opacity into a wrapper `opacity` track.
-- Stroke width (and colour/opacity on blend-mode styles) compile to `canvas` nodes. `src/player/painter.ts` draws them in one shared Blob-URL worker via OffscreenCanvas; `renderer()` and `workerMain()` are serialised with `toString()`, so they must stay self-contained (no imports, no outer variables). Without worker support the same renderer runs on the main thread.
+- Stroke width, trim paths, shape morphing (and colour/opacity on blend-mode styles) compile to `canvas` nodes; trims are applied per shape exactly like lottie-web's TrimModifier. `src/player/painter.ts` draws them in one shared Blob-URL worker via OffscreenCanvas; `renderer()` and `workerMain()` are serialised with `toString()`, so they must stay self-contained (no imports, no outer variables). Without worker support the same renderer runs on the main thread.
 - Tests and screenshots must `await player.painted()` after `seek()`; canvas frames arrive asynchronously from the worker.
 
 ## Conventions

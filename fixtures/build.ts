@@ -502,6 +502,141 @@ const fixtures: Record<string, () => Json> = {
     ]);
   },
 
+  trim: () => {
+    nextInd = 1;
+    const op = 60;
+    const zigzag = path(
+      [
+        [20, 170],
+        [60, 130],
+        [100, 170],
+        [140, 130],
+        [180, 170],
+      ],
+      [
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+      ],
+      [
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+        [0, 0],
+      ],
+      false,
+    );
+    return composition('trim', 200, 200, op, [
+      shapeLayer(
+        'trims',
+        [
+          group('draw-on', [
+            ellipse([55, 55], [70, 70]),
+            stroke('#ef476f', 8),
+            { ty: 'tm', s: fixed(0), e: anim(kf(0, 0), end(40, 100)), o: anim(kf(0, 0, LINEAR), end(60, 270)), m: 1 },
+          ]),
+          group('chase', [
+            zigzag,
+            stroke('#118ab2', 6, { lc: 2, lj: 2 }),
+            { ty: 'tm', s: anim(kf(10, 0), end(50, 60)), e: anim(kf(0, 30), end(40, 100)), o: fixed(0), m: 1 },
+          ]),
+          group('sequence', [
+            rect([130, 40], [40, 40]),
+            rect([175, 40], [30, 30]),
+            stroke('#073b4c', 4, { lc: 1, lj: 1, ml: 4 }),
+            { ty: 'tm', s: fixed(0), e: anim(kf(0, 0, LINEAR), end(60, 100)), o: fixed(0), m: 2 },
+          ]),
+          group('fill-trim', [
+            ellipse([150, 100], [44, 44]),
+            fill('#06d6a0'),
+            { ty: 'tm', s: fixed(10), e: anim(kf(0, 20), end(60, 95)), o: fixed(0), m: 1 },
+          ]),
+        ],
+        ks(),
+        op,
+      ),
+    ]);
+  },
+
+  morph: () => {
+    nextInd = 1;
+    const op = 60;
+    const shapeValue = (v: number[][], i: number[][], o: number[][]) => ({ v, i, o, c: true });
+    const zero = [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ];
+    const square = shapeValue(
+      [
+        [-40, -40],
+        [40, -40],
+        [40, 40],
+        [-40, 40],
+      ],
+      zero,
+      zero,
+    );
+    const blob = shapeValue(
+      [
+        [0, -50],
+        [50, 0],
+        [0, 50],
+        [-50, 0],
+      ],
+      [
+        [-28, 0],
+        [0, -28],
+        [28, 0],
+        [0, 28],
+      ],
+      [
+        [28, 0],
+        [0, 28],
+        [-28, 0],
+        [0, -28],
+      ],
+    );
+    const diamond = shapeValue(
+      [
+        [0, -45],
+        [45, 0],
+        [0, 45],
+        [-45, 0],
+      ],
+      zero,
+      zero,
+    );
+    const morph = (values: unknown[], times: number[], ease = EASE) => ({
+      ty: 'sh',
+      ks: anim(
+        ...values.map((value, n) =>
+          n === values.length - 1
+            ? end(times[n]!, [value] as unknown as number[])
+            : kf(times[n]!, [value] as unknown as number[], ease),
+        ),
+      ),
+    });
+    return composition('morph', 200, 200, op, [
+      shapeLayer(
+        'filled',
+        [group('f', [morph([square, blob, square], [0, 30, 60]), fill('#5a189a')])],
+        ks({ p: fixed([60, 100, 0]), s: fixed([60, 60, 100]) }),
+        op,
+      ),
+      shapeLayer(
+        'stroked',
+        [group('s', [morph([diamond, blob, diamond], [0, 30, 60]), stroke('#ef476f', 5)])],
+        ks({ p: fixed([145, 100, 0]), s: fixed([70, 70, 100]) }),
+        op,
+      ),
+    ]);
+  },
+
   mask: () => {
     nextInd = 1;
     const op = 60;

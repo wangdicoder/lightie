@@ -14,6 +14,8 @@ const FIXTURES = [
   'group-animation',
   'paint',
   'stroke-width',
+  'trim',
+  'morph',
   'mask',
   'spatial',
   'unsupported',
@@ -33,9 +35,9 @@ describe('compile', () => {
 
   it('reports the features that need the fallback renderer', () => {
     const { animation, report } = compile(fixture('unsupported'), { source: 'embed' });
-    expect(report.unsupported.map((u) => u.feature).sort()).toEqual(['animated path', 'expression', 'trim path']);
-    expect(report.unsupported.find((u) => u.feature === 'trim path')?.where).toEqual(['trim']);
-    expect(animation.unsupported).toHaveLength(3);
+    expect(report.unsupported.map((u) => u.feature)).toEqual(['expression']);
+    expect(report.unsupported[0]?.where).toEqual(['expression']);
+    expect(animation.unsupported).toHaveLength(1);
     expect(animation.source).toBeTypeOf('object');
   });
 

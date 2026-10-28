@@ -13,6 +13,8 @@ const FIXTURES = [
   'group-animation',
   'paint',
   'stroke-width',
+  'trim',
+  'morph',
   'mask',
   'spatial',
   ...(process.env.LIGHTIE_EXTRA_FIXTURES ?? '').split(',').filter(Boolean),
@@ -20,7 +22,7 @@ const FIXTURES = [
 const WIDTH = 240;
 const MAX_MISMATCH = Number(process.env.LIGHTIE_MAX_MISMATCH ?? 0.004);
 const CANVAS_ANTIALIASING_MISMATCH = 0.008;
-const CANVAS_FIXTURES = new Set(['stroke-width']);
+const CANVAS_FIXTURES = new Set(['stroke-width', 'trim', 'morph']);
 
 const framesFor = (total: number): number[] => {
   const frames = new Set<number>([0]);

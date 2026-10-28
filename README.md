@@ -15,8 +15,8 @@ Bundle cost for a consumer (minified + gzip, static imports only, 1 kB = 1000 by
 | `lightie` (player) | 3.1 kB |
 | `lightie/element` (`<lightie-player>`, includes the player) | 4.2 kB |
 | `lightie/react` (includes the element) | 4.5 kB |
-| paint worker (loaded on demand, only by animations that animate stroke width) | 2.5 kB |
-| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 9.8 kB |
+| paint worker (loaded on demand, only by animations with stroke-width, trim-path or shape-morph animation) | 3.7 kB |
+| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 10.5 kB |
 | lottie-web 5.13 `lottie_light.min.js` / `lottie.min.js` | 46.5 kB / 76.1 kB |
 
 Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
@@ -33,8 +33,12 @@ Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
 | paint (colour and opacity) | lightie | 0 ms | 0 ms | 30 | 30 |
 | stroke-width | lottie-web | 10 ms | 48 ms | 30 | 1 |
 | stroke-width | lightie | 0 ms | 3 ms | 30 | 30 |
+| trim | lottie-web | 49 ms | 99 ms | 30 | 1 |
+| trim | lightie | 0 ms | 8 ms | 30 | 30 |
+| morph | lottie-web | 42 ms | 85 ms | 30 | 1 |
+| morph | lightie | 0 ms | 7 ms | 30 | 30 |
 
-Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). The worst frame differs in 0.19% of its pixels, which is anti-aliasing. Shapes drawn on a canvas (animated stroke width) are allowed 0.8%, because canvas and SVG anti-alias thin strokes slightly differently; the worst measured frame is 0.66% (Firefox, a 2 px ring).
+Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). The worst frame differs in 0.19% of its pixels, which is anti-aliasing. Shapes drawn on a canvas (stroke width, trim paths, morphing) are allowed 0.8%, because canvas and SVG anti-alias thin strokes slightly differently; the worst measured frame is 0.66% (Firefox, a 2 px ring).
 
 ## Install
 
@@ -119,14 +123,14 @@ When the compiled animation lists unsupported features and carries its source (t
 | tier | features | how it runs |
 | --- | --- | --- |
 | Composited, zero JS | position, rotation, scale, anchor, opacity, parenting, precomps (offset, stretch, clipping), layer in and out points, hold keyframes, per-keyframe bezier easing, static shapes (paths, rectangles, ellipses, stars, polygons), fills, strokes, dashes, linear and radial gradients, groups, single add masks, solids, images, blend modes, animated fill and stroke colour, animated fill and stroke opacity | WAAPI on `transform` / `opacity`, executed by the compositor |
-| Worker canvas | animated stroke width; colour or opacity animations on a style that also uses a blend mode | drawn on an OffscreenCanvas by one shared Web Worker, so a busy main thread does not stop it; drawn on the main thread when workers or OffscreenCanvas are unavailable (for example a CSP without `worker-src blob:`) |
+| Worker canvas | trim paths (simultaneous and individual), shape morphing, animated stroke width; colour or opacity animations on a style that also uses a blend mode | drawn on an OffscreenCanvas by one shared Web Worker, so a busy main thread does not stop it; drawn on the main thread when workers or OffscreenCanvas are unavailable (for example a CSP without `worker-src blob:`) |
 | Baked at compile time | curved motion paths, separated position axes with different easing, skew | sampled into linear keyframes, still composited |
-| Fallback | trim paths, shape morphing, shape modifiers (repeater, rounded corners, …), track mattes, expressions, text layers, effects, time remapping, 3D layers | reported by the compiler; rendered by lottie-web when a fallback is configured |
+| Fallback | shape modifiers (repeater, rounded corners, …), track mattes, expressions, text layers, effects, time remapping, 3D layers | reported by the compiler; rendered by lottie-web when a fallback is configured |
 
 ## How it works
 
 1. **Compile.** The compiler flattens precomp time into one timeline, turns every Lottie keyframe segment into a CSS `cubic-bezier()` (cutting segments exactly where precomps clip them), splits shape groups into static SVG and animated HTML wrappers, and writes a compact JSON scene. Browsers cannot composite SVG paint properties, so a colour animation becomes one opaque copy of the shape per keyframe colour, and the copies cross-fade with composited opacity. Fading copy B in over copy A at opacity `t` gives exactly the colour `lerp(A, B, t)`, so the result matches Lottie's colour interpolation.
-2. **Play.** The player builds the DOM once and calls `element.animate()` for each track. All animations share one start time, so seeking, pausing and changing speed stay in sync. Shapes whose geometry changes (stroke width) are compiled to canvas nodes; the player hands those canvases to a shared worker that draws each frame from the same keyframes and the same clock.
+2. **Play.** The player builds the DOM once and calls `element.animate()` for each track. All animations share one start time, so seeking, pausing and changing speed stay in sync. Shapes whose geometry changes (stroke width, trim paths, morphing) are compiled to canvas nodes; the player hands those canvases to a shared worker that draws each frame from the same keyframes and the same clock.
 
 Lottie semantics (transform order, shape geometry, style inheritance, gradient highlights) follow lottie-web, which the fidelity tests use as the reference.
 
