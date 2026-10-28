@@ -12,6 +12,7 @@ const FIXTURES = [
   'shapes',
   'group-animation',
   'paint',
+  'stroke-width',
   'mask',
   'spatial',
   ...(process.env.LIGHTIE_EXTRA_FIXTURES ?? '').split(',').filter(Boolean),

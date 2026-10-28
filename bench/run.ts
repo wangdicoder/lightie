@@ -7,12 +7,14 @@ const PORT = 5181;
 const SECONDS = Number(process.env.BENCH_SECONDS ?? 4);
 const COUNT = Number(process.env.BENCH_COUNT ?? 24);
 const BLOCK_MS = 500;
-const fixtures = [
-  'dots-loader',
-  'group-animation',
-  'basic-transform',
-  ...(process.env.LIGHTIE_EXTRA_FIXTURES ?? '').split(',').filter(Boolean),
-];
+const fixtures = process.env.BENCH_FIXTURES
+  ? process.env.BENCH_FIXTURES.split(',').filter(Boolean)
+  : [
+      'dots-loader',
+      'group-animation',
+      'basic-transform',
+      ...(process.env.LIGHTIE_EXTRA_FIXTURES ?? '').split(',').filter(Boolean),
+    ];
 
 interface Row {
   fixture: string;

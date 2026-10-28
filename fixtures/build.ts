@@ -463,9 +463,34 @@ const fixtures: Record<string, () => Json> = {
             rect([145, 100], [60, 60], 6),
             {
               ty: 'st',
-              c: anim(kf(0, rgb('#073b4c')), end(60, rgb('#ffd166'))),
+              c: anim(kf(0, rgb('#073b4c'), EASE, { h: 1 }), kf(20, rgb('#118ab2')), end(60, rgb('#ffd166'))),
+              o: anim(kf(0, 100), kf(45, 50), end(60, 100)),
+              w: fixed(8),
+              lc: 2,
+              lj: 2,
+            },
+          ]),
+        ],
+        ks(),
+        op,
+      ),
+    ]);
+  },
+
+  'stroke-width': () => {
+    nextInd = 1;
+    const op = 60;
+    return composition('stroke-width', 200, 200, op, [
+      shapeLayer(
+        'stroke-width',
+        [
+          group('ring', [
+            ellipse([100, 100], [110, 110]),
+            {
+              ty: 'st',
+              c: fixed(rgb('#5a189a')),
               o: fixed(100),
-              w: anim(kf(0, 2), kf(30, 12), end(60, 2)),
+              w: anim(kf(0, 2), kf(30, 22), end(60, 2)),
               lc: 2,
               lj: 2,
             },

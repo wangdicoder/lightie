@@ -23,7 +23,7 @@ import {
 } from './geometry';
 import type { LottiePathValue, LottieProperty, LottieShape, LottieTransform } from './lottie';
 import { hasExpression, hasKeyframes, type NormProp, normalize } from './property';
-import { buildKeys, isConstant, round, type TimeMap, type TrackContext, toTrack } from './track';
+import { buildKeys, isConstant, type K, type KEase, round, type TimeMap, type TrackContext, toTrack } from './track';
 import { compileTransform, type Issues } from './transform';
 
 interface ShapeRef {
@@ -36,6 +36,7 @@ interface StyleOp {
   item: LottieShape;
   depth: number;
   shapes: ShapeRef[];
+  html: boolean;
 }
 
 interface GroupOp {
@@ -97,6 +98,15 @@ const isMoving = (tr: LottieShape | undefined): boolean =>
 const isAnimatedGroup = (tr: LottieShape | undefined): boolean =>
   !!tr && (isMoving(tr) || hasKeyframes(prop(tr, 'o')) || hasExpression(prop(tr, 'o')));
 
+const isStroke = (style: LottieShape): boolean => style.ty === 'st' || style.ty === 'gs';
+
+function compositesPaint(style: LottieShape): boolean {
+  if (style.bm) return false;
+  if (isStroke(style) && hasKeyframes(prop(style, 'w'))) return false;
+  const colored = style.ty === 'fl' || style.ty === 'st';
+  return (colored && hasKeyframes(prop(style, 'c'))) || hasKeyframes(prop(style, 'o'));
+}
+
 const staticOf = (p: LottieProperty | undefined, fallback: number[]): number[] => {
   const n = normalize(p, fallback);
   return n.kind === 'static' ? n.v : n.keys[0]!.v;
@@ -122,7 +132,7 @@ function walk(items: LottieShape[], chain: (LottieShape | undefined)[], open: St
     const item = items[n]!;
     if (STYLES.has(item.ty)) {
       if (item.hd) continue;
-      const op: StyleOp = { kind: 'style', item, depth: chain.length, shapes: [] };
+      const op: StyleOp = { kind: 'style', item, depth: chain.length, shapes: [], html: compositesPaint(item) };
       own.push(op);
       open.push(op);
       ops.push(op);
@@ -130,7 +140,7 @@ function walk(items: LottieShape[], chain: (LottieShape | undefined)[], open: St
       const children = Array.isArray(item.it) ? (item.it as LottieShape[]) : [];
       const tr = children.find((child) => child.ty === 'tr');
       const childOps = walk(children, [...chain, tr], open, issues);
-      const html = isAnimatedGroup(tr) || childOps.some((child) => child.kind === 'group' && child.html);
+      const html = isAnimatedGroup(tr) || childOps.some((child) => child.html);
       ops.push({ kind: 'group', item, tr, ops: childOps, html });
     } else if (GEOMETRY.has(item.ty)) {
       if (item.hd) continue;
@@ -246,7 +256,6 @@ function applyOpacity(
 }
 
 function applyStrokeStyle(path: SvgPath, shape: LottieShape, map: TimeMap, ctx: TrackContext, issues: Issues) {
-  applyOpacity(path, 'strokeOpacity', prop(shape, 'o'), map, ctx);
   const width = normalize(prop(shape, 'w'), [1]);
   const constant = addTrack(path, 'strokeWidth', width, map, ctx, [0], (v) => v);
   const value = constant ?? (width.kind === 'static' ? width.v : null);
@@ -325,7 +334,7 @@ function gradientOf(shape: LottieShape, issues: Issues): Gradient {
   return { type: 'linear', p: [start[0] ?? 0, start[1] ?? 0, end[0] ?? 0, end[1] ?? 0].map((v) => round(v, 3)), stops };
 }
 
-function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SvgPath | null {
+function styleD(op: StyleOp, issues: Issues): string {
   let d = '';
   for (const ref of op.shapes) {
     const between = ref.chain.slice(op.depth);
@@ -338,6 +347,11 @@ function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues)
     const geo = geometry(ref.item, issues);
     if (geo) d += pathToD(geo, m);
   }
+  return d;
+}
+
+function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SvgPath | null {
+  const d = styleD(op, issues);
   if (!d) return null;
   const style = op.item;
   const path: SvgPath = { d };
@@ -351,6 +365,7 @@ function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues)
       break;
     case 'st':
       applyColor(path, 'stroke', prop(style, 'c'), map, ctx);
+      applyOpacity(path, 'strokeOpacity', prop(style, 'o'), map, ctx);
       applyStrokeStyle(path, style, map, ctx, issues);
       break;
     case 'gf':
@@ -360,10 +375,90 @@ function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues)
       break;
     case 'gs':
       path.stroke = gradientOf(style, issues);
+      applyOpacity(path, 'strokeOpacity', prop(style, 'o'), map, ctx);
       applyStrokeStyle(path, style, map, ctx, issues);
       break;
   }
   return path;
+}
+
+const sameColor = (a: number[], b: number[]): boolean => a.every((c, i) => Math.abs(c - (b[i] ?? c)) < 1e-6);
+
+interface Fade {
+  color: number[];
+  from: number;
+  to: number;
+  ease: KEase;
+}
+
+function crossFade(keys: K[], copy: (color: number[]) => SvgPath, ctx: TrackContext): SvgNode[] {
+  const fades: Fade[] = [{ color: keys[0]!.v, from: 0, to: 0, ease: 'linear' }];
+  for (let n = 0; n < keys.length - 1; n++) {
+    const a = keys[n]!;
+    const b = keys[n + 1]!;
+    if (sameColor(a.v, b.v)) continue;
+    const instant = a.e === 'hold' || b.o <= a.o;
+    fades.push({ color: b.v, from: a.o, to: b.o, ease: instant ? 'hold' : a.e });
+  }
+  return fades.map((fade, j) => {
+    const node: SvgNode = { k: 'svg', c: [copy(fade.color)] };
+    const hideAt = fades[j + 1]?.to;
+    const frames: K[] = [];
+    if (j === 0) {
+      if (hideAt === undefined || hideAt >= 1) return node;
+      frames.push({ o: 0, v: [1], e: 'hold' });
+    } else {
+      if (fade.from > 0) frames.push({ o: 0, v: [0], e: 'hold' });
+      frames.push({ o: fade.from, v: [0], e: fade.ease });
+      frames.push({ o: fade.to, v: [1], e: 'hold' });
+    }
+    if (hideAt !== undefined && hideAt < 1) {
+      frames.push({ o: hideAt, v: [0], e: 'hold' });
+      frames.push({ o: 1, v: [0], e: 'linear' });
+    } else if (frames[frames.length - 1]!.o < 1) {
+      frames.push({ o: 1, v: [1], e: 'linear' });
+    }
+    node.a = [toTrack('opacity', frames, (v) => v, ctx)];
+    return node;
+  });
+}
+
+function compositedStyle(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SceneNode | null {
+  const d = styleD(op, issues);
+  if (!d) return null;
+  const style = op.item;
+  const which = isStroke(style) ? 'stroke' : 'fill';
+  const base: SvgPath = { d };
+  if (which === 'fill' && style.r === 2) base.rule = 'evenodd';
+  if (which === 'stroke') applyStrokeStyle(base, style, map, ctx, issues);
+
+  const node: DivNode = { k: 'div', c: [] };
+  const opacity = normalize(prop(style, 'o'), [100]);
+  const opacityKeys = buildKeys(opacity, map, [0], ctx);
+  const toOpacity = (v: number[]) => [(v[0] ?? 100) / 100];
+  if (opacityKeys && !isConstant(opacityKeys)) node.a = [toTrack('opacity', opacityKeys, toOpacity, ctx)];
+  else {
+    const o = round(toOpacity(opacityKeys ? opacityKeys[0]!.v : staticOf(prop(style, 'o'), [100]))[0]!);
+    if (o !== 1) node.o = o;
+  }
+
+  if (style.ty === 'gf' || style.ty === 'gs') {
+    node.c.push({ k: 'svg', c: [{ ...base, [which]: gradientOf(style, issues) }] });
+  } else {
+    const color = normalize(prop(style, 'c'), [0, 0, 0, 1]);
+    const colorKeys = buildKeys(color, map, [0, 1, 2], ctx);
+    const paint = (rgb: number[]): SvgPath => ({ ...base, [which]: hex(rgb.slice(0, 3).map((c) => c * 255)) });
+    if (colorKeys && !isConstant(colorKeys)) node.c.push(...crossFade(colorKeys, paint, ctx));
+    else node.c.push({ k: 'svg', c: [paint(colorKeys ? colorKeys[0]!.v : staticOf(prop(style, 'c'), [0, 0, 0]))] });
+  }
+
+  const only = node.c[0];
+  if (node.c.length === 1 && only && !only.a && only.o === undefined) {
+    if (node.a) only.a = node.a;
+    if (node.o !== undefined) only.o = node.o;
+    return only;
+  }
+  return node;
 }
 
 function svgGroup(op: GroupOp, map: TimeMap, ctx: TrackContext, issues: Issues): SvgItem | null {
@@ -395,7 +490,13 @@ function emit(ops: Op[], target: SceneNode[], map: TimeMap, ctx: TrackContext, i
     svg.c.push(item);
   };
   for (const op of ops) {
-    if (op.kind === 'style') {
+    if (op.kind === 'style' && op.html) {
+      const node = compositedStyle(op, map, ctx, issues);
+      if (node) {
+        svg = null;
+        target.push(node);
+      }
+    } else if (op.kind === 'style') {
       const path = stylePath(op, map, ctx, issues);
       if (path) into(path);
     } else if (!op.html) {
@@ -411,7 +512,9 @@ function emit(ops: Op[], target: SceneNode[], map: TimeMap, ctx: TrackContext, i
       const bm = blendMode(op.item.bm, issues);
       if (bm) div.bm = bm;
       emit(op.ops, div.c, map, ctx, issues);
-      if (div.c.length) target.push(div);
+      const plain = !div.t && div.r === undefined && !div.s && !div.m && div.o === undefined && !div.a && !div.bm;
+      if (plain) target.push(...div.c);
+      else if (div.c.length) target.push(div);
     }
   }
 }

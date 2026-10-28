@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { compile } from '../src/compiler/index';
 import type { LottieAnimationData, LottieTransform } from '../src/compiler/lottie';
 import { evaluate, normalize } from '../src/compiler/property';
-import type { DivNode, SceneNode, SvgNode } from '../src/types';
+import type { DivNode, SceneNode, SvgNode, SvgPath } from '../src/types';
 import { findTrack, fixture, trackValue, walkNodes } from './helpers';
 
 const FIXTURES = [
@@ -13,6 +13,7 @@ const FIXTURES = [
   'shapes',
   'group-animation',
   'paint',
+  'stroke-width',
   'mask',
   'spatial',
   'unsupported',
@@ -113,10 +114,39 @@ describe('compile', () => {
     expect(report.tracks.baked).toBeGreaterThanOrEqual(3);
   });
 
-  it('keeps paint animations on the svg path', () => {
-    const { animation, report } = compile(fixture('paint'));
-    expect(report.tracks.paint).toBe(4);
-    const svg = animation.nodes[0] as SvgNode;
-    expect(svg.k).toBe('svg');
+  it('composites colour and opacity animations by cross-fading opaque copies', () => {
+    const data = fixture('paint') as LottieAnimationData;
+    const { animation, report } = compile(data);
+    expect(report.tracks.paint).toBe(0);
+    const layer = animation.nodes[0] as DivNode;
+    const [stroke, fill] = layer.c as DivNode[];
+    const shapes = (data.layers[0]!.shapes ?? []) as unknown as { it: Record<string, unknown>[] }[];
+    const sources = [shapes[1]!.it[1]!, shapes[0]!.it[1]!];
+    for (const [i, wrapper] of [stroke!, fill!].entries()) {
+      const copies = wrapper.c as SvgNode[];
+      const paint = (copy: SvgNode) => {
+        const path = copy.c[0] as SvgPath;
+        return (path.fill ?? path.stroke) as string;
+      };
+      const color = normalize(sources[i]!.c as never, [0, 0, 0, 1]);
+      const opacity = normalize(sources[i]!.o as never, [100]);
+      for (let frame = 0; frame < 60; frame += 2.5) {
+        const offset = frame / 60;
+        let mixed = [255, 255, 255];
+        for (const copy of copies) {
+          const a = copy.a ? trackValue(copy.a[0]!, offset)[0]! : 1;
+          const rgb = [1, 3, 5].map((n) => Number.parseInt(paint(copy).slice(n, n + 2), 16));
+          mixed = mixed.map((v, c) => v * (1 - a) + rgb[c]! * a);
+        }
+        const expected = evaluate(color, frame).map((c) => c * 255);
+        for (let c = 0; c < 3; c++) expect(Math.abs(mixed[c]! - expected[c]!)).toBeLessThan(1.5);
+        expect(trackValue(wrapper.a![0]!, offset)[0]).toBeCloseTo(evaluate(opacity, frame)[0]! / 100, 4);
+      }
+    }
+  });
+
+  it('keeps stroke width animations on the main thread', () => {
+    const { report } = compile(fixture('stroke-width'));
+    expect(report.tracks).toEqual({ composited: 0, paint: 1, baked: 0 });
   });
 });
