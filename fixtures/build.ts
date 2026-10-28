@@ -729,6 +729,47 @@ const fixtures: Record<string, () => Json> = {
     ]);
   },
 
+  'shape-params': () => {
+    nextInd = 1;
+    const op = 60;
+    return composition('shape-params', 200, 200, op, [
+      shapeLayer(
+        'params',
+        [
+          group('ellipse', [
+            { ty: 'el', d: 1, p: fixed([50, 60]), s: anim(kf(0, [30, 30]), kf(30, [80, 50]), end(60, [30, 30])) },
+            fill('#ef476f'),
+          ]),
+          group('rounded', [
+            {
+              ty: 'rc',
+              d: 1,
+              p: fixed([145, 60]),
+              s: anim(kf(0, [40, 40]), kf(30, [80, 60]), end(60, [40, 40])),
+              r: anim(kf(0, 0), kf(30, 20), end(60, 0)),
+            },
+            stroke('#118ab2', 5),
+          ]),
+          group('star', [
+            star({
+              sy: 1,
+              p: fixed([100, 145]),
+              pt: fixed(5),
+              or: anim(kf(0, 25), kf(30, 45), end(60, 25)),
+              ir: fixed(14),
+              os: fixed(0),
+              is: fixed(0),
+              r: anim(kf(0, 0, LINEAR), end(60, 72)),
+            }),
+            fill('#06d6a0'),
+          ]),
+        ],
+        ks(),
+        op,
+      ),
+    ]);
+  },
+
   matte: () => {
     nextInd = 1;
     const op = 60;

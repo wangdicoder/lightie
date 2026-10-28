@@ -24,13 +24,16 @@ import {
   starPath,
 } from './geometry';
 import type { LottieKeyframe, LottiePathValue, LottieProperty, LottieShape, LottieTransform } from './lottie';
-import { easesOf, hasExpression, hasKeyframes, type NormKey, type NormProp, normalize } from './property';
+import { easesOf, evaluate, hasExpression, hasKeyframes, type NormKey, type NormProp, normalize } from './property';
 import {
   buildKeys,
+  fromRoot,
   isConstant,
   type K,
   type KEase,
+  offsetOf,
   round,
+  sample,
   type TimeMap,
   type TrackContext,
   toKeyframes,
@@ -139,7 +142,10 @@ function staticMatrix(tr: LottieShape): Matrix {
 
 const roundMatrix = (m: Matrix): Matrix => m.map((v) => round(v, 6)) as Matrix;
 
-const isMorphing = (shape: LottieShape): boolean => shape.ty === 'sh' && hasKeyframes(prop(shape, 'ks'));
+const isMorphing = (shape: LottieShape): boolean =>
+  shape.ty === 'sh'
+    ? hasKeyframes(prop(shape, 'ks'))
+    : (PARAMS[shape.ty] ?? []).some((key) => hasKeyframes(prop(shape, key)));
 
 function walk(
   items: LottieShape[],
@@ -210,34 +216,93 @@ function geometry(shape: LottieShape, issues: Issues): PathData | null {
       const value = (Array.isArray(ks.k) ? ks.k[0] : ks.k) as LottiePathValue | undefined;
       return value?.v ? fromLottiePath(value) : null;
     }
+    default:
+      return parametric(shape, (key, fallback) => staticGeometryValue(shape, key, fallback, issues));
+  }
+}
+
+type Values = (key: string, fallback: number[]) => number[];
+
+const PARAMS: Record<string, string[]> = {
+  rc: ['p', 's', 'r'],
+  el: ['p', 's'],
+  sr: ['p', 'r', 'or', 'ir', 'os', 'is', 'pt'],
+};
+const LINEAR_PARAMS: Record<string, string[]> = { rc: ['p', 's'], el: ['p', 's'], sr: ['p', 'or', 'ir'] };
+
+function parametric(shape: LottieShape, value: Values): PathData | null {
+  switch (shape.ty) {
     case 'rc':
-      return rectPath(
-        staticGeometryValue(shape, 'p', [0, 0], issues),
-        staticGeometryValue(shape, 's', [0, 0], issues),
-        staticGeometryValue(shape, 'r', [0], issues)[0] ?? 0,
-        shape.d as number | undefined,
-      );
+      return rectPath(value('p', [0, 0]), value('s', [0, 0]), value('r', [0])[0] ?? 0, shape.d as number | undefined);
     case 'el':
-      return ellipsePath(
-        staticGeometryValue(shape, 'p', [0, 0], issues),
-        staticGeometryValue(shape, 's', [0, 0], issues),
-        shape.d as number | undefined,
-      );
+      return ellipsePath(value('p', [0, 0]), value('s', [0, 0]), shape.d as number | undefined);
     case 'sr':
       return starPath({
         star: shape.sy !== 2,
-        points: staticGeometryValue(shape, 'pt', [5], issues)[0] ?? 5,
-        position: staticGeometryValue(shape, 'p', [0, 0], issues),
-        rotation: staticGeometryValue(shape, 'r', [0], issues)[0] ?? 0,
-        outerRadius: staticGeometryValue(shape, 'or', [0], issues)[0] ?? 0,
-        outerRoundness: staticGeometryValue(shape, 'os', [0], issues)[0] ?? 0,
-        innerRadius: staticGeometryValue(shape, 'ir', [0], issues)[0] ?? 0,
-        innerRoundness: staticGeometryValue(shape, 'is', [0], issues)[0] ?? 0,
+        points: value('pt', [5])[0] ?? 5,
+        position: value('p', [0, 0]),
+        rotation: value('r', [0])[0] ?? 0,
+        outerRadius: value('or', [0])[0] ?? 0,
+        outerRoundness: value('os', [0])[0] ?? 0,
+        innerRadius: value('ir', [0])[0] ?? 0,
+        innerRoundness: value('is', [0])[0] ?? 0,
         direction: shape.d as number | undefined,
       });
     default:
       return null;
   }
+}
+
+function parametricMorph(
+  shape: LottieShape,
+  m: Matrix,
+  map: TimeMap,
+  ctx: TrackContext,
+  issues: Issues,
+): CanvasShape | null {
+  const animated = (PARAMS[shape.ty] ?? []).filter((key) => hasKeyframes(prop(shape, key)));
+  if (animated.includes('pt')) issues.add('animated polystar points');
+  const fixedValue: Values = (key, fallback) => staticOf(prop(shape, key), fallback);
+  const only = animated.length === 1 ? animated[0]! : undefined;
+  const rounded = shape.ty === 'rc' && (fixedValue('r', [0])[0] ?? 0) !== 0;
+  if (only && LINEAR_PARAMS[shape.ty]?.includes(only) && !rounded) {
+    const norm = normalize(prop(shape, only), [0, 0]);
+    if (norm.kind === 'anim' && !norm.keys.some((key) => key.to || key.ti)) {
+      const keys: NormKey[] = [];
+      for (const key of norm.keys) {
+        const geo = parametric(shape, (name, fallback) => (name === only ? key.v : fixedValue(name, fallback)));
+        if (geo) keys.push({ t: key.t, hold: key.hold, ease: key.ease, v: flatten(geo, m) });
+      }
+      const first = keys[0];
+      const built = first
+        ? buildKeys(
+            { kind: 'anim', keys },
+            map,
+            first.v.map((_, i) => i),
+            ctx,
+          )
+        : null;
+      if (built) {
+        if (isConstant(built)) return { c: true, v: built[0]!.v };
+        ctx.stats.paint++;
+        return { c: true, v: toKeyframes(built, (v) => v, 3) };
+      }
+    }
+  }
+  const evalAt = (frame: number) => {
+    const t = fromRoot(map, frame);
+    const geo = parametric(shape, (name, fallback) =>
+      name === 'pt' ? fixedValue(name, fallback) : evaluate(normalize(prop(shape, name), fallback), t),
+    );
+    return geo ? flatten(geo, m) : [];
+  };
+  const { win } = ctx;
+  const keys: K[] = [
+    ...sample(evalAt, win.ip, win.op, ctx),
+    { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' },
+  ];
+  ctx.stats.baked++;
+  return { c: true, v: toKeyframes(keys, (v) => v, 3) };
 }
 
 const channel = (c: number): string =>
@@ -419,6 +484,7 @@ function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, 
     const geo = geometry(ref.item, issues);
     return geo ? { c: geo.c, v: flatten(geo, m) } : null;
   }
+  if (ref.item.ty !== 'sh') return parametricMorph(ref.item, m, map, ctx, issues);
   const frames = prop(ref.item, 'ks')!.k as LottieKeyframe[];
   const keys: NormKey[] = [];
   let closed = true;

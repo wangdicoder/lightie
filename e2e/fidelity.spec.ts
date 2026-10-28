@@ -15,6 +15,7 @@ const FIXTURES = [
   'stroke-width',
   'trim',
   'morph',
+  'shape-params',
   'matte',
   'mask',
   'spatial',
@@ -23,7 +24,7 @@ const FIXTURES = [
 const WIDTH = 240;
 const MAX_MISMATCH = Number(process.env.LIGHTIE_MAX_MISMATCH ?? 0.004);
 const CANVAS_ANTIALIASING_MISMATCH = 0.008;
-const CANVAS_FIXTURES = new Set(['stroke-width', 'trim', 'morph']);
+const CANVAS_FIXTURES = new Set(['stroke-width', 'trim', 'morph', 'shape-params']);
 
 const framesFor = (total: number): number[] => {
   const frames = new Set<number>([0]);
