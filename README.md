@@ -12,11 +12,11 @@ Bundle cost for a consumer (minified + gzip, static imports only, 1 kB = 1000 by
 
 | import | size |
 | --- | --- |
-| `lightie` (player) | 3.1 kB |
-| `lightie/element` (`<lightie-player>`, includes the player) | 4.2 kB |
-| `lightie/react` (includes the element) | 4.5 kB |
+| `lightie` (player) | 3.2 kB |
+| `lightie/element` (`<lightie-player>`, includes the player) | 4.3 kB |
+| `lightie/react` (includes the element) | 4.6 kB |
 | paint worker (loaded on demand, only by animations with stroke-width, trim-path or shape-morph animation) | 3.7 kB |
-| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 12.0 kB |
+| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 14.9 kB |
 | lottie-web 5.13 `lottie_light.min.js` / `lottie.min.js` | 46.5 kB / 76.1 kB |
 
 Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
