@@ -39,6 +39,10 @@ Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
 | morph | lightie | 0 ms | 7 ms | 30 | 30 |
 | matte | lottie-web | 25 ms | 100 ms | 30 | 1 |
 | matte | lightie | 0 ms | 0 ms | 30 | 30 |
+| modifiers | lottie-web | 57 ms | 143 ms | 30 | 1 |
+| modifiers | lightie | 0 ms | 2 ms | 30 | 30 |
+| time-remap | lottie-web | 14 ms | 47 ms | 30 | 0 |
+| time-remap | lightie | 0 ms | 1 ms | 29 | 31 |
 
 Other browsers: `pnpm bench:video` records each browser while the main thread is blocked for 2 s. In Firefox, lottie-web stops changing for 1.85 s while lightie keeps moving, both for composited tracks and for worker-drawn canvases. Playwright's WebKit recording stalls with the main thread, so Safari was checked by hand in the playground instead: lightie keeps moving during the block.
 
