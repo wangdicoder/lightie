@@ -1,9 +1,17 @@
 {
   "name": "lightie",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Ahead-of-time compiled Lottie: plays After Effects animations as native browser animations (WAAPI), with zero per-frame JavaScript.",
   "license": "MIT",
-  "author": "Di Wang",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangdicoder/lightie.git"
+  },
+  "homepage": "https://github.com/wangdicoder/lightie#readme",
+  "bugs": {
+    "url": "https://github.com/wangdicoder/lightie/issues"
+  },
+  "author": "Di Wang <wangdicoder@gmail.com>",
   "type": "module",
   "sideEffects": [
     "./dist/element.js",
@@ -74,7 +82,8 @@
     "bench": "node bench/run.ts",
     "size": "node scripts/size.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size",
-    "bench:video": "node bench/video.ts"
+    "bench:video": "node bench/video.ts",
+    "prepublishOnly": "pnpm check"
   },
   "peerDependencies": {
     "lottie-web": "^5.10.0",
@@ -109,5 +118,6 @@
     "typescript": "6.0.3",
     "vite": "8.3.4",
     "vitest": "5.0.5"
-  }
+  },
+  "packageManager": "pnpm@11.22.0"
 }

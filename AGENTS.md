@@ -48,6 +48,12 @@ Run `pnpm test:e2e` after any compiler or player change; it is the merge gate fo
 - Firefox: `pnpm bench:video` (screen recording; needs `ffmpeg` on PATH).
 - Safari/WebKit: no automated signal. Playwright screenshots wait for the main thread in every browser, and its WebKit recording stalls with it. Check by hand: `pnpm dev`, open the playground in Safari, press "Block main thread".
 
+## Releasing
+
+1. Bump `version` in `package.json` and add a `CHANGELOG.md` entry.
+2. Push a `vX.Y.Z` tag. `.github/workflows/release.yml` checks the tag against `package.json` and publishes with npm provenance. It needs the repository secret `NPM_TOKEN`.
+3. Manual alternative: `npm login`, then `pnpm publish --access public`. `prepublishOnly` runs `pnpm check` first.
+
 ## Conventions
 
 - Code comments are not used; names and tests carry intent.
