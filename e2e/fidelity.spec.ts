@@ -33,7 +33,7 @@ const framesFor = (total: number): number[] => {
   for (let n = 1; n < 8; n++) frames.add(Math.round(((total * n) / 8 + 0.37) * 100) / 100);
   frames.add(total - 1);
   frames.add(total - 0.25);
-  return [...frames].sort((a, b) => a - b);
+  return [...frames].filter((frame) => frame >= 0 && frame < total).sort((a, b) => a - b);
 };
 
 for (const name of FIXTURES) {
