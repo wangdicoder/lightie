@@ -228,7 +228,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
         s.height = `${node.clip[1]}px`;
         s.overflow = 'hidden';
       }
-      if (node.mask) s.clipPath = `path('${node.mask}')`;
+      if (node.mask) s.clipPath = `path(${node.maskRule ? `${node.maskRule}, ` : ''}'${node.mask}')`;
       if (node.bm) s.mixBlendMode = node.bm;
       animate(el, node.a);
       parent.append(el);

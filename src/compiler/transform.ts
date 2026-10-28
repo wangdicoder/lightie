@@ -86,6 +86,15 @@ function matrixAt(props: Props, t: number): Matrix {
   });
 }
 
+export function transformMatrixAt(ks: LottieTransform, t: number, issues: Issues): Matrix {
+  return matrixAt(readProps(ks, issues), t);
+}
+
+export function isTransformStatic(ks: LottieTransform, issues: Issues): boolean {
+  const p = readProps(ks, issues);
+  return [p.anchor, p.position, p.positionX, p.positionY, p.scale, p.rotation, p.skew, p.skewAxis].every(isStatic);
+}
+
 function mergeSeparated(x: NormProp, y: NormProp): NormProp | null {
   if (x.kind === 'static' && y.kind === 'static') return { kind: 'static', v: [x.v[0] ?? 0, y.v[0] ?? 0] };
   if (x.kind !== 'anim' || y.kind !== 'anim' || x.keys.length !== y.keys.length) return null;

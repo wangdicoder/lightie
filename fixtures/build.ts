@@ -729,6 +729,36 @@ const fixtures: Record<string, () => Json> = {
     ]);
   },
 
+  matte: () => {
+    nextInd = 1;
+    const op = 60;
+    const bars = [
+      group('bar-1', [rect([100, 70], [150, 24], 12), fill('#ef476f')]),
+      group('bar-2', [rect([100, 100], [150, 24], 12), fill('#118ab2')]),
+      group('bar-3', [rect([100, 130], [150, 24], 12), fill('#06d6a0')]),
+    ];
+    return composition('matte', 200, 200, op, [
+      shapeLayer(
+        'wipe',
+        [group('window', [rect([0, 0], [90, 200]), fill('#000000')])],
+        ks({ p: anim(kf(0, [-45, 100, 0]), end(40, [245, 100, 0])) }),
+        op,
+        { td: 1 },
+      ),
+      shapeLayer('revealed', bars, ks(), op, { tt: 1 }),
+      shapeLayer(
+        'hole',
+        [group('circle', [ellipse([0, 0], [70, 70]), fill('#000000')])],
+        ks({ p: fixed([100, 100, 0]), s: anim(kf(0, [40, 40, 100]), kf(30, [140, 140, 100]), end(60, [40, 40, 100])) }),
+        op,
+        { td: 1 },
+      ),
+      shapeLayer('backdrop', [group('panel', [rect([100, 100], [180, 180], 20), fill('#ffd166')])], ks(), op, {
+        tt: 2,
+      }),
+    ]);
+  },
+
   unsupported: () => {
     nextInd = 1;
     const op = 60;

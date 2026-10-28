@@ -1,10 +1,10 @@
-import type { DivNode, SceneNode } from '../types';
-import { fromLottiePath, pathToD } from './geometry';
+import type { DivNode, Matrix, SceneNode, SvgItem } from '../types';
+import { fromLottiePath, IDENTITY, invert, isIdentity, multiply, pathToD, transformD } from './geometry';
 import type { LottieAsset, LottieLayer, LottieMask, LottiePathValue } from './lottie';
 import { hasExpression, hasKeyframes, normalize } from './property';
 import { blendMode, compileShapes } from './shapes';
-import { type TimeMap, type TrackContext, toRoot } from './track';
-import { compileTransform, type Issues } from './transform';
+import { fromRoot, type K, offsetOf, round, sample, type TimeMap, type TrackContext, toRoot, toTrack } from './track';
+import { compileTransform, type Issues, isTransformStatic, transformMatrixAt } from './transform';
 
 export interface LayerContext extends TrackContext {
   assets: Map<string, LottieAsset>;
@@ -49,7 +49,6 @@ function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, wher
   if (layer.ddd) issues.add('3D layer');
   if (layer.ao && hasKeyframes(layer.ks.p as never)) issues.add('auto-orient');
   if (layer.ef?.some((effect) => effect.en !== 0)) issues.add('layer effects');
-  if (layer.tt) issues.add('track matte');
 
   let node: SceneNode;
   switch (layer.ty) {
@@ -107,6 +106,92 @@ function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, wher
   return node;
 }
 
+function matteClip(matte: LottieLayer, comp: TimeMap, ctx: LayerContext): string | null {
+  if (matte.ty !== 4 || matte.hasMask || matte.ef?.length || matte.tt) return null;
+  const opacity = normalize(matte.ks.o, [100]);
+  if (opacity.kind !== 'static' || opacity.v[0] !== 100) return null;
+  const problems: string[] = [];
+  const quiet = { ...ctx, stats: { composited: 0, paint: 0, baked: 0 } };
+  const nodes = compileShapes(matte.shapes ?? [], comp, quiet, { add: (feature) => problems.push(feature) });
+  if (problems.length) return null;
+  let d = '';
+  const visit = (items: SvgItem[], m: Matrix): boolean =>
+    items.every((item) => {
+      if ('g' in item) return item.o === undefined && !item.bm && visit(item.g, item.m ? multiply(m, item.m) : m);
+      if (
+        typeof item.fill !== 'string' ||
+        item.stroke !== undefined ||
+        item.fo !== undefined ||
+        item.a?.length ||
+        item.bm
+      )
+        return false;
+      d += transformD(item.d, m);
+      return true;
+    });
+  for (const node of nodes) {
+    if (
+      node.k !== 'svg' ||
+      node.a?.length ||
+      node.o !== undefined ||
+      node.t ||
+      node.r !== undefined ||
+      node.s ||
+      node.m
+    )
+      return null;
+    if (!visit(node.c, IDENTITY)) return null;
+  }
+  return d || null;
+}
+
+function matted(
+  node: SceneNode,
+  matte: LottieLayer,
+  clip: string,
+  inverted: boolean,
+  byIndex: Map<number, LottieLayer>,
+  comp: TimeMap,
+  ctx: LayerContext,
+  issues: Issues,
+): SceneNode {
+  const chain: LottieLayer[] = [matte];
+  for (
+    let p = byIndex.get(matte.parent ?? Number.NaN);
+    p && !chain.includes(p);
+    p = byIndex.get(p.parent ?? Number.NaN)
+  )
+    chain.unshift(p);
+  const at = (t: number): Matrix =>
+    chain.reduce<Matrix>((m, layer) => multiply(m, transformMatrixAt(layer.ks, t, issues)), IDENTITY);
+  const exact = (m: Matrix) => m.map((v) => round(v, 6)) as Matrix;
+  const inner: DivNode = { k: 'div', c: [node] };
+  const outer: DivNode = {
+    k: 'div',
+    c: [inner],
+    mask: inverted ? `M-100000 -100000H100000V100000H-100000Z${clip}` : clip,
+  };
+  if (inverted) outer.maskRule = 'evenodd';
+  if (chain.every((layer) => isTransformStatic(layer.ks, issues))) {
+    const m = at(0);
+    if (!isIdentity(m)) {
+      outer.m = exact(m);
+      inner.m = exact(invert(m));
+    }
+    return outer;
+  }
+  const { win } = ctx;
+  const evalAt = (frame: number) => at(fromRoot(comp, frame));
+  const keys: K[] = [
+    ...sample(evalAt, win.ip, win.op, ctx),
+    { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' },
+  ];
+  outer.a = [toTrack('transform', keys, (v) => v, ctx)];
+  inner.a = [toTrack('transform', keys, (v) => invert(v as Matrix), ctx)];
+  ctx.stats.baked += 2;
+  return outer;
+}
+
 export function compileComp(layers: LottieLayer[], comp: TimeMap, ctx: LayerContext, prefix = ''): SceneNode[] {
   const byIndex = new Map<number, LottieLayer>();
   for (const layer of layers) if (layer.ind !== undefined) byIndex.set(layer.ind, layer);
@@ -131,6 +216,13 @@ export function compileComp(layers: LottieLayer[], comp: TimeMap, ctx: LayerCont
         ...compileTransform(parent.ks, comp, ctx, ctx.issues(where), { opacity: false }),
       };
       if (!isTrivial(wrapper)) node = wrapper;
+    }
+    if (layer.tt) {
+      const issues = ctx.issues(where);
+      const matte = layer.tp !== undefined ? byIndex.get(layer.tp) : layers[n - 1];
+      const clip = matte?.td && (layer.tt === 1 || layer.tt === 2) ? matteClip(matte, comp, ctx) : null;
+      if (!matte || !clip) issues.add(layer.tt > 2 ? 'luma matte' : 'track matte');
+      else node = matted(node, matte, clip, layer.tt === 2, byIndex, comp, ctx, issues);
     }
     out.push(node);
   }

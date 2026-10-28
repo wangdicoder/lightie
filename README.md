@@ -16,7 +16,7 @@ Bundle cost for a consumer (minified + gzip, static imports only, 1 kB = 1000 by
 | `lightie/element` (`<lightie-player>`, includes the player) | 4.2 kB |
 | `lightie/react` (includes the element) | 4.5 kB |
 | paint worker (loaded on demand, only by animations with stroke-width, trim-path or shape-morph animation) | 3.7 kB |
-| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 10.5 kB |
+| `lightie/compiler` (build time, or lazy-loaded for runtime compilation) | 11.2 kB |
 | lottie-web 5.13 `lottie_light.min.js` / `lottie.min.js` | 46.5 kB / 76.1 kB |
 
 Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
@@ -37,6 +37,8 @@ Runtime cost, 24 instances on one page, headless Chromium 156 (`pnpm bench`):
 | trim | lightie | 0 ms | 8 ms | 30 | 30 |
 | morph | lottie-web | 42 ms | 85 ms | 30 | 1 |
 | morph | lightie | 0 ms | 7 ms | 30 | 30 |
+| matte | lottie-web | 25 ms | 100 ms | 30 | 1 |
+| matte | lightie | 0 ms | 0 ms | 30 | 30 |
 
 Fidelity: every fixture is rendered by lottie-web and by lightie at nine frames, in Chromium, WebKit and Firefox, and compared pixel by pixel (`pnpm test:e2e`). The worst frame differs in 0.19% of its pixels, which is anti-aliasing. Shapes drawn on a canvas (stroke width, trim paths, morphing) are allowed 0.8%, because canvas and SVG anti-alias thin strokes slightly differently; the worst measured frame is 0.66% (Firefox, a 2 px ring).
 
@@ -122,10 +124,10 @@ When the compiled animation lists unsupported features and carries its source (t
 
 | tier | features | how it runs |
 | --- | --- | --- |
-| Composited, zero JS | position, rotation, scale, anchor, opacity, parenting, precomps (offset, stretch, clipping), layer in and out points, hold keyframes, per-keyframe bezier easing, static shapes (paths, rectangles, ellipses, stars, polygons), fills, strokes, dashes, linear and radial gradients, groups, single add masks, solids, images, blend modes, animated fill and stroke colour, animated fill and stroke opacity | WAAPI on `transform` / `opacity`, executed by the compositor |
+| Composited, zero JS | position, rotation, scale, anchor, opacity, parenting, precomps (offset, stretch, clipping), layer in and out points, hold keyframes, per-keyframe bezier easing, static shapes (paths, rectangles, ellipses, stars, polygons), fills, strokes, dashes, linear and radial gradients, groups, single add masks, alpha and inverted-alpha track mattes whose matte is a solid-filled shape layer (moving mattes are baked into composited matrices), solids, images, blend modes, animated fill and stroke colour, animated fill and stroke opacity | WAAPI on `transform` / `opacity`, executed by the compositor |
 | Worker canvas | trim paths (simultaneous and individual), shape morphing, animated stroke width; colour or opacity animations on a style that also uses a blend mode | drawn on an OffscreenCanvas by one shared Web Worker, so a busy main thread does not stop it; drawn on the main thread when workers or OffscreenCanvas are unavailable (for example a CSP without `worker-src blob:`) |
 | Baked at compile time | curved motion paths, separated position axes with different easing, skew | sampled into linear keyframes, still composited |
-| Fallback | shape modifiers (repeater, rounded corners, …), track mattes, expressions, text layers, effects, time remapping, 3D layers | reported by the compiler; rendered by lottie-web when a fallback is configured |
+| Fallback | shape modifiers (repeater, rounded corners, …), luma mattes, mattes with soft edges, strokes or partial opacity, expressions, text layers, effects, time remapping, 3D layers | reported by the compiler; rendered by lottie-web when a fallback is configured |
 
 ## How it works
 

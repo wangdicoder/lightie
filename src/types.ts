@@ -24,6 +24,7 @@ export interface NodeBase {
   bm?: string;
   clip?: [number, number];
   mask?: string;
+  maskRule?: 'evenodd';
   a?: Track[];
 }
 

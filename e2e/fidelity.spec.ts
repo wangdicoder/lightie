@@ -15,6 +15,7 @@ const FIXTURES = [
   'stroke-width',
   'trim',
   'morph',
+  'matte',
   'mask',
   'spatial',
   ...(process.env.LIGHTIE_EXTRA_FIXTURES ?? '').split(',').filter(Boolean),

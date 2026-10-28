@@ -84,6 +84,7 @@ export interface LottieLayer {
   hasMask?: boolean;
   masksProperties?: LottieMask[];
   tt?: number;
+  tp?: number;
   td?: number;
   tm?: LottieProperty;
   ef?: { en?: number }[];

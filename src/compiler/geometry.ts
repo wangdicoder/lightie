@@ -54,6 +54,28 @@ export function composeTransform(t: TransformValues): Matrix {
 
 export const isIdentity = (m: Matrix): boolean => m.every((v, i) => Math.abs(v - (IDENTITY[i] ?? 0)) < 1e-9);
 
+export function invert(m: Matrix): Matrix {
+  const det = m[0] * m[3] - m[1] * m[2];
+  if (Math.abs(det) < 1e-12) return IDENTITY;
+  return [
+    m[3] / det,
+    -m[1] / det,
+    -m[2] / det,
+    m[0] / det,
+    (m[2] * m[5] - m[3] * m[4]) / det,
+    (m[1] * m[4] - m[0] * m[5]) / det,
+  ];
+}
+
+export function transformD(d: string, m: Matrix): string {
+  return d.replace(/(-?[\d.]+(?:e-?\d+)?) (-?[\d.]+(?:e-?\d+)?)/g, (_, xs: string, ys: string) => {
+    const x = Number(xs);
+    const y = Number(ys);
+    const fmt = (v: number) => String(Math.round(v * 1000) / 1000);
+    return `${fmt(m[0] * x + m[2] * y + m[4])} ${fmt(m[1] * x + m[3] * y + m[5])}`;
+  });
+}
+
 export interface PathData {
   v: number[][];
   i: number[][];

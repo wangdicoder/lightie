@@ -16,6 +16,7 @@ const FIXTURES = [
   'stroke-width',
   'trim',
   'morph',
+  'matte',
   'mask',
   'spatial',
   'unsupported',
