@@ -146,11 +146,11 @@ button.primary {
   background: var(--soft);
 }
 
-.stats {
+main > section.stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
-  padding-top: 0 !important;
+  padding-top: 0;
 }
 
 .stats div {
@@ -352,7 +352,7 @@ footer {
   .snippets {
     grid-template-columns: 1fr;
   }
-  .stats,
+  main > section.stats,
   .cards {
     grid-template-columns: 1fr 1fr;
   }
@@ -362,7 +362,7 @@ footer {
   .nav nav a:not(:last-child) {
     display: none;
   }
-  .stats,
+  main > section.stats,
   .cards,
   .panes {
     grid-template-columns: 1fr;

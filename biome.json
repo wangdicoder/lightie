@@ -8,7 +8,8 @@
       "!fixtures/*.json",
       "!test-results",
       "!playwright-report",
-      "!bench/results"
+      "!bench/results",
+      "!site-dist"
     ]
   },
   "formatter": {
