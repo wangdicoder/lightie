@@ -14,7 +14,7 @@ const ENTRIES: Entry[] = [
   { name: 'lightie (player)', code: `export { createPlayer } from '${dist}/index.js';`, budget: 3500 },
   { name: 'lightie/element', code: `import '${dist}/element.js';`, budget: 4500 },
   { name: 'lightie/react', code: `export { Lightie } from '${dist}/react.js';`, budget: 5000 },
-  { name: 'lightie/compiler', code: `export { compile } from '${dist}/compiler.js';`, budget: 14000 },
+  { name: 'lightie/compiler', code: `export { compile } from '${dist}/compiler.js';`, budget: 16000 },
   {
     name: 'paint worker (lazy)',
     code: `export { attach } from '${process.cwd()}/src/player/painter.ts';`,

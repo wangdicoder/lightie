@@ -45,15 +45,35 @@ function visibleRange(layer: LottieLayer, comp: TimeMap, ctx: LayerContext): [nu
   if (!comp.remap) return [toRoot(comp, layer.ip), toRoot(comp, layer.op)];
   const { win, sampleRate } = ctx;
   const step = win.fr / sampleRate;
-  let first = Number.NaN;
-  let last = Number.NaN;
-  for (let frame = win.ip; frame <= win.op; frame += step) {
+  const visible = (frame: number) => {
     const t = fromRoot(comp, frame);
-    if (t < layer.ip || t >= layer.op) continue;
-    if (Number.isNaN(first)) first = frame;
-    last = frame + step;
+    return t >= layer.ip && t < layer.op;
+  };
+  const edge = (from: number, to: number) => {
+    const wanted = visible(to);
+    let a = from;
+    let b = to;
+    for (let i = 0; i < 30; i++) {
+      const mid = (a + b) / 2;
+      if (visible(mid) === wanted) b = mid;
+      else a = mid;
+    }
+    return b;
+  };
+  let first = visible(win.ip) ? win.ip : Number.NaN;
+  let last = Number.NaN;
+  let previous = win.ip;
+  for (let frame = win.ip + step; frame < win.op + step; frame += step) {
+    const at = Math.min(frame, win.op);
+    if (visible(at) !== visible(previous)) {
+      const crossing = edge(previous, at);
+      if (visible(at) && Number.isNaN(first)) first = crossing;
+      if (!visible(at)) last = crossing;
+    }
+    previous = at;
   }
-  return Number.isNaN(first) ? null : [first, Math.min(last, win.op)];
+  if (Number.isNaN(first)) return null;
+  return [first, Number.isNaN(last) || last < first ? win.op : last];
 }
 
 function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, where: string): SceneNode | null {

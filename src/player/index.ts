@@ -56,6 +56,7 @@ export interface Player {
 
 const SVG = 'http://www.w3.org/2000/svg';
 const REVERSE_HEADROOM = 1e6;
+const BOUNDARY = 1e-3;
 let instances = 0;
 
 const css = (p: TrackProperty, v: number | number[]): string => {
@@ -258,7 +259,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
   const clock = (): Clock => ({
     origin: timeOrigin + origin,
     rate: rate(),
-    held: playing ? null : held,
+    held: playing ? null : held + BOUNDARY,
     duration,
     iterations,
   });
@@ -275,7 +276,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
     for (const a of list) {
       a.pause();
       a.playbackRate = rate();
-      a.currentTime = time;
+      a.currentTime = time + BOUNDARY;
     }
     try {
       for (const a of list) a.commitStyles();
