@@ -112,5 +112,17 @@ requestAnimationFrame(tick);
 const initial = names.includes('group-animation') ? 'group-animation' : (names[0] ?? '');
 select.value = initial;
 show(await load(initial), initial);
-const hero = compile(await load('modifiers')).animation;
+const recolor = (node: unknown, from: number[], to: number[]): void => {
+  if (!node || typeof node !== 'object') return;
+  for (const value of Object.values(node)) recolor(value, from, to);
+  const k = (node as { k?: unknown }).k;
+  if (Array.isArray(k) && k.length >= 3 && from.every((c, i) => Math.abs(c - (k[i] as number)) < 0.01)) {
+    to.forEach((c, i) => {
+      k[i] = c;
+    });
+  }
+};
+const heroData = await load('modifiers');
+recolor(heroData, [0x5a / 255, 0x18 / 255, 0x9a / 255], [0x25 / 255, 0x63 / 255, 0xeb / 255]);
+const hero = compile(heroData).animation;
 createPlayer($('hero'), hero, { reducedMotion: 'respect' });
