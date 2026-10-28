@@ -73,7 +73,8 @@
     "test:e2e": "playwright test",
     "bench": "node bench/run.ts",
     "size": "node scripts/size.ts",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size"
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm size",
+    "bench:video": "node bench/video.ts"
   },
   "peerDependencies": {
     "lottie-web": "^5.10.0",
