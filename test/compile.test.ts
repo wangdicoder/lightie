@@ -17,6 +17,7 @@ const FIXTURES = [
   'trim',
   'morph',
   'shape-params',
+  'modifiers',
   'matte',
   'mask',
   'spatial',

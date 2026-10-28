@@ -21,7 +21,11 @@ import {
   type PathData,
   pathToD,
   rectPath,
+  rotation,
+  roundCorners,
+  scaling,
   starPath,
+  translation,
 } from './geometry';
 import type { LottieKeyframe, LottiePathValue, LottieProperty, LottieShape, LottieTransform } from './lottie';
 import { easesOf, evaluate, hasExpression, hasKeyframes, type NormKey, type NormProp, normalize } from './property';
@@ -69,8 +73,6 @@ type Op = StyleOp | GroupOp;
 const STYLES = new Set(['fl', 'st', 'gf', 'gs']);
 const GEOMETRY = new Set(['sh', 'rc', 'el', 'sr']);
 const MODIFIERS: Record<string, string> = {
-  rd: 'rounded corners',
-  rp: 'repeater',
   pb: 'pucker & bloat',
   zz: 'zig zag',
   op: 'offset path',
@@ -129,7 +131,63 @@ const staticOf = (p: LottieProperty | undefined, fallback: number[]): number[] =
   return n.kind === 'static' ? n.v : n.keys[0]!.v;
 };
 
+function expandRepeaters(items: LottieShape[], issues: Issues): LottieShape[] {
+  let list = items.map((item) =>
+    item.ty === 'gr' && Array.isArray(item.it)
+      ? { ...item, it: expandRepeaters(item.it as LottieShape[], issues) }
+      : item,
+  );
+  for (let n = 0; n < list.length; n++) {
+    const rp = list[n]!;
+    if (rp.ty !== 'rp' || rp.hd) continue;
+    const tr = (rp.tr ?? {}) as LottieShape;
+    const keys = ['a', 'p', 's', 'r', 'so', 'eo'];
+    if ([prop(rp, 'c'), prop(rp, 'o'), ...keys.map((key) => prop(tr, key))].some(hasKeyframes))
+      issues.add('animated repeater');
+    const copies = Math.max(0, Math.ceil(staticOf(prop(rp, 'c'), [1])[0] ?? 1));
+    const offset = staticOf(prop(rp, 'o'), [0])[0] ?? 0;
+    const anchor = staticOf(prop(tr, 'a'), [0, 0]);
+    const position = staticOf(prop(tr, 'p'), [0, 0]);
+    const scale = staticOf(prop(tr, 's'), [100, 100]).map((v) => v / 100);
+    const turn = staticOf(prop(tr, 'r'), [0])[0] ?? 0;
+    const so = (staticOf(prop(tr, 'so'), [100])[0] ?? 100) / 100;
+    const eo = (staticOf(prop(tr, 'eo'), [100])[0] ?? 100) / 100;
+    const partial = (perc: number) => scale.map((s) => s + (1 - s) * (1 - perc));
+    const whole = offset > 0 ? Math.floor(offset) : Math.ceil(offset);
+    const fraction = offset % 1;
+    let base = [1, 1];
+    for (let w = 0; w < Math.abs(whole); w++) base = base.map((b, d) => (offset > 0 ? b * scale[d]! : b / scale[d]!));
+    if (fraction) {
+      const step = partial(Math.abs(fraction));
+      base = base.map((b, d) => (offset > 0 ? b * step[d]! : b / step[d]!));
+    }
+    const source = list.slice(0, n);
+    const groups: LottieShape[] = [];
+    for (let i = 0; i < copies; i++) {
+      const j = rp.m === 2 ? copies - 1 - i : i;
+      const k = offset + j;
+      const sx = (base[0] ?? 1) * (scale[0] ?? 1) ** j;
+      const sy = (base[1] ?? 1) * (scale[1] ?? 1) ** j;
+      const matrix = multiply(
+        translation((position[0] ?? 0) * k + (anchor[0] ?? 0), (position[1] ?? 0) * k + (anchor[1] ?? 0)),
+        multiply(scaling(sx, sy), multiply(rotation(turn * k), translation(-(anchor[0] ?? 0), -(anchor[1] ?? 0)))),
+      );
+      const opacity = copies === 1 ? so : so + ((eo - so) * i) / (copies - 1);
+      groups.push({
+        ty: 'gr',
+        nm: `${rp.nm ?? 'repeater'} ${i}`,
+        it: [...structuredClone(source), { ty: 'tr', __m: matrix, o: { a: 0, k: opacity * 100 } }],
+      });
+    }
+    list = [...groups, ...list.slice(n + 1)];
+    n = groups.length - 1;
+  }
+  return list;
+}
+
 function staticMatrix(tr: LottieShape): Matrix {
+  const preset = (tr as { __m?: Matrix }).__m;
+  if (preset) return preset;
   return composeTransform({
     anchor: staticOf(prop(tr, 'a'), [0, 0]),
     position: staticOf(prop(tr, 'p'), [0, 0]),
@@ -174,9 +232,9 @@ function walk(
       ops.push({ kind: 'group', item, tr, ops: childOps, html });
     } else if (GEOMETRY.has(item.ty)) {
       if (item.hd) continue;
-      if (trims.length > 1) issues.add('multiple trim paths');
+      if (trims.filter((mod) => mod.ty === 'tm').length > 1) issues.add('multiple trim paths');
       for (const style of open) style.shapes.push({ item, chain, trims: trims.slice() });
-    } else if (item.ty === 'tm') {
+    } else if (item.ty === 'tm' || item.ty === 'rd') {
       if (item.hd) continue;
       ownTrims.push(item);
       trims.push(item);
@@ -187,7 +245,7 @@ function walk(
   }
   for (const style of own) {
     open.splice(open.indexOf(style), 1);
-    if (style.shapes.some((ref) => ref.trims.length || isMorphing(ref.item))) {
+    if (style.shapes.some((ref) => ref.trims.some(needsCanvas) || isMorphing(ref.item))) {
       style.mode = 'canvas';
       style.html = true;
     }
@@ -253,19 +311,35 @@ function parametric(shape: LottieShape, value: Values): PathData | null {
   }
 }
 
+const roundRadius = (mod: LottieShape, t?: number): number =>
+  (t === undefined ? staticOf(prop(mod, 'r'), [0]) : evaluate(normalize(prop(mod, 'r'), [0]), t))[0] ?? 0;
+
+const withRounds = (geo: PathData, ref: ShapeRef, t?: number): PathData =>
+  ref.trims.reduce((g, mod) => (mod.ty === 'rd' ? roundCorners(g, roundRadius(mod, t)) : g), geo);
+
+function shapeGeometry(ref: ShapeRef, issues: Issues): PathData | null {
+  const geo = geometry(ref.item, issues);
+  return geo && withRounds(geo, ref);
+}
+
+const needsCanvas = (mod: LottieShape): boolean => mod.ty === 'tm' || hasKeyframes(prop(mod, 'r'));
+
 function parametricMorph(
-  shape: LottieShape,
+  ref: ShapeRef,
   m: Matrix,
   map: TimeMap,
   ctx: TrackContext,
   issues: Issues,
 ): CanvasShape | null {
+  const shape = ref.item;
   const animated = (PARAMS[shape.ty] ?? []).filter((key) => hasKeyframes(prop(shape, key)));
   if (animated.includes('pt')) issues.add('animated polystar points');
   const fixedValue: Values = (key, fallback) => staticOf(prop(shape, key), fallback);
   const only = animated.length === 1 ? animated[0]! : undefined;
-  const rounded = shape.ty === 'rc' && (fixedValue('r', [0])[0] ?? 0) !== 0;
-  if (only && LINEAR_PARAMS[shape.ty]?.includes(only) && !rounded) {
+  const rounded =
+    (shape.ty === 'rc' && (fixedValue('r', [0])[0] ?? 0) !== 0) ||
+    ref.trims.some((mod) => mod.ty === 'rd' && hasKeyframes(prop(mod, 'r')));
+  if (only && LINEAR_PARAMS[shape.ty]?.includes(only) && !rounded && !ref.trims.some((mod) => mod.ty === 'rd')) {
     const norm = normalize(prop(shape, only), [0, 0]);
     if (norm.kind === 'anim' && !norm.keys.some((key) => key.to || key.ti)) {
       const keys: NormKey[] = [];
@@ -289,20 +363,17 @@ function parametricMorph(
       }
     }
   }
-  const evalAt = (frame: number) => {
-    const t = fromRoot(map, frame);
-    const geo = parametric(shape, (name, fallback) =>
-      name === 'pt' ? fixedValue(name, fallback) : evaluate(normalize(prop(shape, name), fallback), t),
-    );
-    return geo ? flatten(geo, m) : [];
-  };
-  const { win } = ctx;
-  const keys: K[] = [
-    ...sample(evalAt, win.ip, win.op, ctx),
-    { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' },
-  ];
-  ctx.stats.baked++;
-  return { c: true, v: toKeyframes(keys, (v) => v, 3) };
+  return sampled(
+    (frame) => {
+      const t = fromRoot(map, frame);
+      const geo = parametric(shape, (name, fallback) =>
+        name === 'pt' ? fixedValue(name, fallback) : evaluate(normalize(prop(shape, name), fallback), t),
+      );
+      return geo ? flatten(withRounds(geo, ref, t), m) : [];
+    },
+    true,
+    ctx,
+  );
 }
 
 const channel = (c: number): string =>
@@ -447,7 +518,7 @@ function styleD(op: StyleOp, issues: Issues, bounds?: Bounds): string {
     }
     let m: Matrix = IDENTITY;
     for (const tr of between) if (tr) m = multiply(m, staticMatrix(tr));
-    const geo = geometry(ref.item, issues);
+    const geo = shapeGeometry(ref, issues);
     if (!geo) continue;
     d += pathToD(geo, m);
     if (bounds) {
@@ -479,12 +550,28 @@ function flatten(path: PathData, m: Matrix): number[] {
   return out;
 }
 
+function sampled(evalAt: (frame: number) => number[], closed: boolean, ctx: TrackContext): CanvasShape {
+  const { win } = ctx;
+  const keys: K[] = [
+    ...sample(evalAt, win.ip, win.op, ctx),
+    { o: offsetOf(win, win.op), v: evalAt(win.op), e: 'linear' },
+  ];
+  ctx.stats.baked++;
+  return { c: closed, v: toKeyframes(keys, (v) => v, 3) };
+}
+
 function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, issues: Issues): CanvasShape | null {
   if (!isMorphing(ref.item)) {
-    const geo = geometry(ref.item, issues);
-    return geo ? { c: geo.c, v: flatten(geo, m) } : null;
+    const geo = shapeGeometry(ref, issues);
+    if (!geo) return null;
+    if (!ref.trims.some((mod) => mod.ty === 'rd' && hasKeyframes(prop(mod, 'r'))))
+      return { c: geo.c, v: flatten(geo, m) };
+    const base = geometry(ref.item, issues);
+    return sampled((frame) => (base ? flatten(withRounds(base, ref, fromRoot(map, frame)), m) : []), geo.c, ctx);
   }
-  if (ref.item.ty !== 'sh') return parametricMorph(ref.item, m, map, ctx, issues);
+  if (ref.item.ty !== 'sh') return parametricMorph(ref, m, map, ctx, issues);
+  if (ref.trims.some((mod) => mod.ty === 'rd' && hasKeyframes(prop(mod, 'r'))))
+    issues.add('animated rounded corners on a morphing path');
   const frames = prop(ref.item, 'ks')!.k as LottieKeyframe[];
   const keys: NormKey[] = [];
   let closed = true;
@@ -493,7 +580,12 @@ function canvasShape(ref: ShapeRef, m: Matrix, map: TimeMap, ctx: TrackContext, 
       (kf.s as LottiePathValue[] | undefined)?.[0] ?? (frames[n - 1]?.e as LottiePathValue[] | undefined)?.[0];
     if (!value?.v) continue;
     closed = value.c ?? closed;
-    keys.push({ t: kf.t, v: flatten(fromLottiePath(value), m), hold: kf.h === 1, ease: easesOf(kf.o, kf.i) });
+    keys.push({
+      t: kf.t,
+      v: flatten(withRounds(fromLottiePath(value), ref), m),
+      hold: kf.h === 1,
+      ease: easesOf(kf.o, kf.i),
+    });
   }
   const first = keys[0];
   if (!first) return null;
@@ -536,7 +628,7 @@ function canvasStyle(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issue
     for (const tr of between) if (tr) m = multiply(m, staticMatrix(tr));
     const shape = canvasShape(ref, m, map, ctx, issues);
     if (!shape) continue;
-    const trim = ref.trims[ref.trims.length - 1];
+    const trim = ref.trims.filter((mod) => mod.ty === 'tm').at(-1);
     groups.set(trim, [...(groups.get(trim) ?? []), shape]);
   }
   const base = groups.size ? stylePath(op, map, ctx, issues, 'M0 0') : null;
@@ -760,6 +852,6 @@ function emit(ops: Op[], target: SceneNode[], map: TimeMap, ctx: TrackContext, i
 
 export function compileShapes(shapes: LottieShape[], map: TimeMap, ctx: TrackContext, issues: Issues): SceneNode[] {
   const out: SceneNode[] = [];
-  emit(walk(shapes, [], [], [], issues), out, map, ctx, issues);
+  emit(walk(expandRepeaters(shapes, issues), [], [], [], issues), out, map, ctx, issues);
   return out;
 }

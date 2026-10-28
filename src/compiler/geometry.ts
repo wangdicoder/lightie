@@ -67,6 +67,39 @@ export function invert(m: Matrix): Matrix {
   ];
 }
 
+const ROUND_CORNER = 0.5519;
+
+export function roundCorners(path: PathData, round: number): PathData {
+  const out: PathData = { v: [], i: [], o: [], c: path.c };
+  const n = path.v.length;
+  const push = (v: number[], o: number[], i: number[]) => {
+    out.v.push(v);
+    out.o.push(o);
+    out.i.push(i);
+  };
+  for (let k = 0; k < n; k++) {
+    const v = path.v[k]!;
+    const o = path.o[k]!;
+    const i = path.i[k]!;
+    const sharp = v[0] === o[0] && v[1] === o[1] && v[0] === i[0] && v[1] === i[1];
+    if (!sharp || round <= 0 || ((k === 0 || k === n - 1) && !path.c)) {
+      push(v, o, i);
+      continue;
+    }
+    const toward = (other: number[]) => {
+      const d = Math.hypot(v[0]! - other[0]!, v[1]! - other[1]!);
+      const f = d ? Math.min(d / 2, round) / d : 0;
+      return [v[0]! + (other[0]! - v[0]!) * f, v[1]! + (other[1]! - v[1]!) * f];
+    };
+    const pull = (p: number[]) => [p[0]! - (p[0]! - v[0]!) * ROUND_CORNER, p[1]! - (p[1]! - v[1]!) * ROUND_CORNER];
+    const a = toward(path.v[k === 0 ? n - 1 : k - 1]!);
+    push(a, pull(a), a);
+    const b = toward(path.v[k === n - 1 ? 0 : k + 1]!);
+    push(b, b, pull(b));
+  }
+  return out;
+}
+
 export function transformD(d: string, m: Matrix): string {
   return d.replace(/(-?[\d.]+(?:e-?\d+)?) (-?[\d.]+(?:e-?\d+)?)/g, (_, xs: string, ys: string) => {
     const x = Number(xs);

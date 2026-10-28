@@ -770,6 +770,66 @@ const fixtures: Record<string, () => Json> = {
     ]);
   },
 
+  modifiers: () => {
+    nextInd = 1;
+    const op = 60;
+    const repeater = (c: number, o: number, tr: Json, m = 1) => ({
+      ty: 'rp',
+      c: fixed(c),
+      o: fixed(o),
+      m,
+      tr: {
+        ty: 'tr',
+        a: fixed([0, 0]),
+        p: fixed([0, 0]),
+        s: fixed([100, 100]),
+        r: fixed(0),
+        so: fixed(100),
+        eo: fixed(100),
+        ...tr,
+      },
+    });
+    return composition('modifiers', 200, 200, op, [
+      shapeLayer(
+        'spinner',
+        [
+          group('dots', [
+            ellipse([60, 22], [12, 12]),
+            fill('#5a189a'),
+            repeater(8, 0, { a: fixed([60, 60]), r: fixed(45), eo: fixed(15) }),
+          ]),
+        ],
+        ks({ r: anim(kf(0, 0, LINEAR), end(60, 360)), a: fixed([60, 60, 0]), p: fixed([60, 60, 0]) }),
+        op,
+      ),
+      shapeLayer(
+        'bars',
+        [
+          group('bar', [
+            rect([118, 30], [16, 40], 3),
+            fill('#118ab2'),
+            repeater(4, 0.5, { p: fixed([20, 0]), s: fixed([90, 90]), a: fixed([118, 30]), so: fixed(40) }, 2),
+          ]),
+        ],
+        ks(),
+        op,
+      ),
+      shapeLayer(
+        'rounded',
+        [
+          group('card', [square(55, 140, 30), { ty: 'rd', r: fixed(12) }, fill('#ef476f')]),
+          group('hexagon', [
+            star({ sy: 2, p: fixed([145, 140]), pt: fixed(6), or: fixed(34), os: fixed(0) }),
+            { ty: 'rd', r: anim(kf(0, 0), kf(30, 18), end(60, 0)) },
+            stroke('#06d6a0', 6),
+          ]),
+        ],
+        ks(),
+        op,
+      ),
+    ]);
+  },
+
   matte: () => {
     nextInd = 1;
     const op = 60;

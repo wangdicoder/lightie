@@ -137,6 +137,14 @@ export function compileTransform(
   issues: Issues,
   options: TransformOptions,
 ): NodeBase {
+  const preset = (ks as { __m?: Matrix }).__m;
+  if (preset) {
+    const fixed: NodeBase = isIdentity(preset) ? {} : { m: preset.map((v) => round(v, 6)) as Matrix };
+    const opacity = normalize(ks.o, [100]);
+    const o = (opacity.kind === 'static' ? opacity.v[0] : opacity.keys[0]?.v[0]) ?? 100;
+    if (options.opacity && o !== 100) fixed.o = round(o / 100);
+    return fixed;
+  }
   const props = readProps(ks, issues);
   const node: NodeBase = {};
   const tracks: Track[] = [];
