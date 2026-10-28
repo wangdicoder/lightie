@@ -37,7 +37,9 @@ Run `pnpm test:e2e` after any compiler or player change; it is the merge gate fo
 - Chrome does not composite `translate` / `rotate` / `scale` animations on an `<svg>` element, so every scene node is a `<div>`; SVG content sits inside it unanimated.
 - WebKit drops `opacity` on a zero-sized element whose content overflows, so node divs are 1 px × 1 px.
 - Chrome does not composite two animations of the same property on one element. The compiler emits at most one track per property per node; keep it that way.
-- SVG paint properties never run on the compositor. Colour animations are compiled into cross-faded opaque copies (`crossFade` in `src/compiler/shapes.ts`) and fill/stroke opacity into a wrapper `opacity` track. Only stroke width, and styles with a blend mode, stay on the main thread.
+- SVG paint properties never run on the compositor. Colour animations are compiled into cross-faded opaque copies (`crossFade` in `src/compiler/shapes.ts`) and fill/stroke opacity into a wrapper `opacity` track.
+- Stroke width (and colour/opacity on blend-mode styles) compile to `canvas` nodes. `src/player/painter.ts` draws them in one shared Blob-URL worker via OffscreenCanvas; `renderer()` and `workerMain()` are serialised with `toString()`, so they must stay self-contained (no imports, no outer variables). Without worker support the same renderer runs on the main thread.
+- Tests and screenshots must `await player.painted()` after `seek()`; canvas frames arrive asynchronously from the worker.
 
 ## Conventions
 

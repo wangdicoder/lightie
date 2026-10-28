@@ -1,4 +1,5 @@
 import type { Easing, Gradient, LightieAnimation, SceneNode, SvgItem, SvgPath, Track, TrackProperty } from '../types';
+import type { Clock, Painter, Surface } from './painter';
 
 export type Fit = 'contain' | 'cover' | 'fill' | 'none';
 
@@ -49,6 +50,7 @@ export interface Player {
   seek(frame: number): void;
   setSpeed(speed: number): void;
   setDirection(direction: 1 | -1): void;
+  painted(): Promise<void>;
   destroy(): void;
 }
 
@@ -205,6 +207,12 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
         el.style.width = `${node.w}px`;
         el.style.height = `${node.h}px`;
         el.style.background = node.color;
+      } else if (node.k === 'canvas') {
+        const canvas = doc.createElement('canvas');
+        const [x, y, cw, ch] = node.box;
+        canvas.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${cw}px;height:${ch}px`;
+        el.append(canvas);
+        surfaces.push({ canvas, node });
       } else {
         build(node.c, el);
       }
@@ -227,6 +235,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
     }
   };
 
+  const surfaces: Surface[] = [];
   const stage = doc.createElement('div');
   stage.style.cssText = `position:absolute;left:0;top:0;width:${w}px;height:${h}px;overflow:hidden;transform-origin:0 0`;
   build(animation.nodes, stage);
@@ -237,11 +246,23 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
   let origin = 0;
   let held = 0;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let painter: Painter | undefined;
+  let painterReady: Promise<void> = Promise.resolve();
+  let destroyed = false;
+  let stageScale = 1;
 
   const total = Number.isFinite(iterations) ? duration * iterations : Number.POSITIVE_INFINITY;
+  const timeOrigin = (doc.defaultView ?? globalThis).performance.timeOrigin;
   const now = (): number => Number(doc.timeline.currentTime ?? 0);
   const rate = () => speed * direction;
   const position0 = (): number => (playing ? (now() - origin) * rate() : held);
+  const clock = (): Clock => ({
+    origin: timeOrigin + origin,
+    rate: rate(),
+    held: playing ? null : held,
+    duration,
+    iterations,
+  });
 
   const hold = (time: number) => {
     clearTimeout(timer);
@@ -252,6 +273,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
       a.currentTime = time;
     }
     playing = false;
+    painter?.sync(clock());
   };
 
   const run = (time: number) => {
@@ -262,6 +284,7 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
       a.startTime = origin;
     }
     playing = true;
+    painter?.sync(clock());
     clearTimeout(timer);
     if (Number.isFinite(total)) {
       const remaining = direction > 0 ? total - time : time;
@@ -319,9 +342,15 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
       if (playing) run(clampTime(position0()));
       else hold(position0());
     },
+    async painted() {
+      await painterReady;
+      await painter?.painted();
+    },
     destroy() {
+      destroyed = true;
       clearTimeout(timer);
       for (const a of animations) a.cancel();
+      painter?.destroy();
       resize?.disconnect();
       visibility?.disconnect();
       root.remove();
@@ -339,6 +368,8 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
     else if (fit === 'cover') sx = sy = Math.max(sx, sy);
     else if (fit === 'none') sx = sy = 1;
     stage.style.transform = `translate(${(cw - w * sx) / 2}px,${(ch - h * sy) / 2}px) scale(${sx},${sy})`;
+    stageScale = Math.max(sx, sy);
+    painter?.resize(stageScale);
   };
   const resize = typeof ResizeObserver === 'function' ? new ResizeObserver(layout) : undefined;
   resize?.observe(root);
@@ -361,6 +392,14 @@ export function createPlayer(container: HTMLElement, animation: LightieAnimation
 
   if (autoplay) player.play();
   else player.seek(reduce ? (options.posterFrame ?? 0) : 0);
+  if (surfaces.length) {
+    painterReady = import('./painter')
+      .then(({ attach }) => attach(surfaces, clock(), stageScale))
+      .then((attached) => {
+        if (destroyed) attached.destroy();
+        else painter = attached;
+      });
+  }
   return player;
 }
 
@@ -411,6 +450,7 @@ function fallbackPlayer(
     seek: (frame) => call((h) => h.seek(frame)),
     setSpeed: (speed) => call((h) => h.setSpeed(speed)),
     setDirection: (direction) => call((h) => h.setDirection?.(direction)),
+    painted: () => Promise.resolve(),
     destroy: () => {
       destroyed = true;
       handle?.destroy();

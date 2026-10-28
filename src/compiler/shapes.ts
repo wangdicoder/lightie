@@ -36,6 +36,7 @@ interface StyleOp {
   item: LottieShape;
   depth: number;
   shapes: ShapeRef[];
+  mode: 'svg' | 'composite' | 'canvas';
   html: boolean;
 }
 
@@ -100,11 +101,12 @@ const isAnimatedGroup = (tr: LottieShape | undefined): boolean =>
 
 const isStroke = (style: LottieShape): boolean => style.ty === 'st' || style.ty === 'gs';
 
-function compositesPaint(style: LottieShape): boolean {
-  if (style.bm) return false;
-  if (isStroke(style) && hasKeyframes(prop(style, 'w'))) return false;
+function paintMode(style: LottieShape): StyleOp['mode'] {
   const colored = style.ty === 'fl' || style.ty === 'st';
-  return (colored && hasKeyframes(prop(style, 'c'))) || hasKeyframes(prop(style, 'o'));
+  const animatedPaint = (colored && hasKeyframes(prop(style, 'c'))) || hasKeyframes(prop(style, 'o'));
+  if (isStroke(style) && hasKeyframes(prop(style, 'w'))) return 'canvas';
+  if (!animatedPaint) return 'svg';
+  return style.bm ? 'canvas' : 'composite';
 }
 
 const staticOf = (p: LottieProperty | undefined, fallback: number[]): number[] => {
@@ -132,7 +134,8 @@ function walk(items: LottieShape[], chain: (LottieShape | undefined)[], open: St
     const item = items[n]!;
     if (STYLES.has(item.ty)) {
       if (item.hd) continue;
-      const op: StyleOp = { kind: 'style', item, depth: chain.length, shapes: [], html: compositesPaint(item) };
+      const mode = paintMode(item);
+      const op: StyleOp = { kind: 'style', item, depth: chain.length, shapes: [], mode, html: mode !== 'svg' };
       own.push(op);
       open.push(op);
       ops.push(op);
@@ -334,7 +337,9 @@ function gradientOf(shape: LottieShape, issues: Issues): Gradient {
   return { type: 'linear', p: [start[0] ?? 0, start[1] ?? 0, end[0] ?? 0, end[1] ?? 0].map((v) => round(v, 3)), stops };
 }
 
-function styleD(op: StyleOp, issues: Issues): string {
+type Bounds = [number, number, number, number];
+
+function styleD(op: StyleOp, issues: Issues, bounds?: Bounds): string {
   let d = '';
   for (const ref of op.shapes) {
     const between = ref.chain.slice(op.depth);
@@ -345,9 +350,44 @@ function styleD(op: StyleOp, issues: Issues): string {
     let m: Matrix = IDENTITY;
     for (const tr of between) if (tr) m = multiply(m, staticMatrix(tr));
     const geo = geometry(ref.item, issues);
-    if (geo) d += pathToD(geo, m);
+    if (!geo) continue;
+    d += pathToD(geo, m);
+    if (bounds) {
+      for (const p of [...geo.v, ...geo.i, ...geo.o]) {
+        const x = m[0] * (p[0] ?? 0) + m[2] * (p[1] ?? 0) + m[4];
+        const y = m[1] * (p[0] ?? 0) + m[3] * (p[1] ?? 0) + m[5];
+        bounds[0] = Math.min(bounds[0], x);
+        bounds[1] = Math.min(bounds[1], y);
+        bounds[2] = Math.max(bounds[2], x);
+        bounds[3] = Math.max(bounds[3], y);
+      }
+    }
   }
   return d;
+}
+
+function canvasStyle(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SceneNode | null {
+  const bounds: Bounds = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, -Infinity, -Infinity];
+  styleD(op, issues, bounds);
+  const path = stylePath(op, map, ctx, issues);
+  if (!path || !Number.isFinite(bounds[0])) return null;
+  delete path.bm;
+  const widths = [
+    path.sw ?? 0,
+    ...(path.a ?? []).filter((t) => t.p === 'strokeWidth').flatMap((t) => t.k.map((k) => Number(k[1]))),
+  ];
+  const reach = path.stroke ? (Math.max(...widths) / 2) * (path.lj === 'miter' ? Math.max(1, path.ml ?? 4) : 1) : 0;
+  const pad = reach + 2;
+  const x = Math.floor(bounds[0] - pad);
+  const y = Math.floor(bounds[1] - pad);
+  const node: SceneNode = {
+    k: 'canvas',
+    box: [x, y, Math.ceil(bounds[2] + pad) - x, Math.ceil(bounds[3] + pad) - y],
+    c: [path],
+  };
+  const bm = blendMode(op.item.bm, issues);
+  if (bm) node.bm = bm;
+  return node;
 }
 
 function stylePath(op: StyleOp, map: TimeMap, ctx: TrackContext, issues: Issues): SvgPath | null {
@@ -491,7 +531,7 @@ function emit(ops: Op[], target: SceneNode[], map: TimeMap, ctx: TrackContext, i
   };
   for (const op of ops) {
     if (op.kind === 'style' && op.html) {
-      const node = compositedStyle(op, map, ctx, issues);
+      const node = op.mode === 'canvas' ? canvasStyle(op, map, ctx, issues) : compositedStyle(op, map, ctx, issues);
       if (node) {
         svg = null;
         target.push(node);

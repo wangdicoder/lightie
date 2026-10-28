@@ -19,6 +19,8 @@ const FIXTURES = [
 ];
 const WIDTH = 240;
 const MAX_MISMATCH = Number(process.env.LIGHTIE_MAX_MISMATCH ?? 0.004);
+const CANVAS_ANTIALIASING_MISMATCH = 0.008;
+const CANVAS_FIXTURES = new Set(['stroke-width']);
 
 const framesFor = (total: number): number[] => {
   const frames = new Set<number>([0]);
@@ -46,7 +48,7 @@ for (const name of FIXTURES) {
       const mismatched = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.1 });
       const ratio = mismatched / (a.width * a.height);
       results.push(`${frame}:${(ratio * 100).toFixed(2)}%`);
-      if (ratio > MAX_MISMATCH) {
+      if (ratio > (CANVAS_FIXTURES.has(name) ? CANVAS_ANTIALIASING_MISMATCH : MAX_MISMATCH)) {
         failures.push(`frame ${frame}: ${(ratio * 100).toFixed(2)}% of pixels differ`);
         for (const [label, png] of [
           ['lottie-web', a],

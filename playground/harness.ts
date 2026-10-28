@@ -55,12 +55,14 @@ window.lightieHarness = {
       pauseWhenHidden: false,
       reducedMotion: 'ignore',
     });
+    await player.painted();
     await settle();
     return { report, totalFrames: animation.op - animation.ip, width, height };
   },
   async frame(frame) {
     reference?.goToAndStop(frame, true);
     player?.seek(frame);
+    await player?.painted();
     await settle();
   },
 };

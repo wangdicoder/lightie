@@ -87,7 +87,9 @@ function compileLayer(layer: LottieLayer, comp: TimeMap, ctx: LayerContext, wher
     case 4: {
       const children = compileShapes(layer.shapes ?? [], map, ctx, issues);
       if (!children.length) return null;
-      node = children.length === 1 && children[0]!.k === 'svg' ? children[0]! : { k: 'div', c: children };
+      const only = children.length === 1 ? children[0]! : undefined;
+      const bare = only && (only.k === 'svg' || only.k === 'canvas') && !only.a && !only.bm && only.o === undefined;
+      node = bare ? only : { k: 'div', c: children };
       break;
     }
     case 5:

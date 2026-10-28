@@ -51,7 +51,13 @@ export interface SolidNode extends NodeBase {
   h: number;
 }
 
-export type SceneNode = DivNode | SvgNode | ImageNode | SolidNode;
+export interface CanvasNode extends NodeBase {
+  k: 'canvas';
+  box: [x: number, y: number, w: number, h: number];
+  c: SvgPath[];
+}
+
+export type SceneNode = DivNode | SvgNode | ImageNode | SolidNode | CanvasNode;
 
 export interface Gradient {
   type: 'linear' | 'radial';

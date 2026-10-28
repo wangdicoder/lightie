@@ -145,8 +145,17 @@ describe('compile', () => {
     }
   });
 
-  it('keeps stroke width animations on the main thread', () => {
-    const { report } = compile(fixture('stroke-width'));
+  it('moves stroke width animations to a canvas painted off the main thread', () => {
+    const { animation, report } = compile(fixture('stroke-width'));
     expect(report.tracks).toEqual({ composited: 0, paint: 1, baked: 0 });
+    const node = animation.nodes[0]!;
+    expect(node.k).toBe('canvas');
+    if (node.k !== 'canvas') return;
+    const [x, y, w, h] = node.box;
+    expect(x).toBeLessThanOrEqual(45 - 11);
+    expect(y).toBeLessThanOrEqual(45 - 11);
+    expect(x + w).toBeGreaterThanOrEqual(155 + 11);
+    expect(y + h).toBeGreaterThanOrEqual(155 + 11);
+    expect(node.c[0]!.a?.map((t) => t.p)).toEqual(['strokeWidth']);
   });
 });
